@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 
 @MainActor
 final class AppSettings: ObservableObject {
@@ -11,7 +12,7 @@ final class AppSettings: ObservableObject {
     @Published var redirectPort: Int
     @Published var liveAgendaUserID: Int
     @Published var requireLockedAgenda: Bool
-    @Published var startAutomatically: Bool
+    @Published var launchAtLogin: Bool
 
     private let defaults = UserDefaults.standard
     private let keychain = KeychainStore(service: "io.github.ChurchToolsProPresenterBridge")
@@ -27,7 +28,7 @@ final class AppSettings: ObservableObject {
         redirectPort = defaults.object(forKey: "redirectPort") as? Int ?? 8765
         liveAgendaUserID = defaults.object(forKey: "liveAgendaUserID") as? Int ?? 0
         requireLockedAgenda = defaults.object(forKey: "requireLockedAgenda") as? Bool ?? true
-        startAutomatically = defaults.object(forKey: "startAutomatically") as? Bool ?? true
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     func loadToken() -> String {
@@ -63,11 +64,19 @@ final class AppSettings: ObservableObject {
         defaults.set(redirectPort, forKey: "redirectPort")
         defaults.set(liveAgendaUserID, forKey: "liveAgendaUserID")
         defaults.set(requireLockedAgenda, forKey: "requireLockedAgenda")
-        defaults.set(startAutomatically, forKey: "startAutomatically")
         if cachedToken != token {
             try keychain.write(token, account: "login-token")
             cachedToken = token
         }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     func makeConfig(token: String) -> BridgeConfig {

@@ -95,11 +95,7 @@ private struct BridgeMenuView: View {
             token = settings.loadToken()
             didLoad = true
             if !token.isEmpty {
-                if settings.startAutomatically {
-                    startBridge()
-                } else if !controller.hasCheckedConnection {
-                    controller.testConnection(config: settings.makeConfig(token: token))
-                }
+                startBridge()
             }
         }
         .onChange(of: token) { _ in autoSave() }
@@ -112,7 +108,7 @@ private struct BridgeMenuView: View {
         .onChange(of: settings.midiNextNote) { _ in autoSave() }
         .onChange(of: settings.midiGoToNote) { _ in autoSave() }
         .onChange(of: settings.redirectPort) { _ in autoSave() }
-        .onChange(of: settings.startAutomatically) { _ in autoSave() }
+        .onChange(of: settings.launchAtLogin) { enabled in updateLaunchAtLogin(enabled) }
     }
 
     private var churchToolsSettings: some View {
@@ -131,7 +127,7 @@ private struct BridgeMenuView: View {
                 Toggle("Nur gesperrte Agenda", isOn: $settings.requireLockedAgenda).padding(.bottom, 3)
             }
             Button("Verbindung prüfen", action: testConnection)
-            Toggle("Server beim Öffnen automatisch starten", isOn: $settings.startAutomatically)
+            Toggle("App bei Anmeldung öffnen", isOn: $settings.launchAtLogin)
         }
     }
 
@@ -194,6 +190,16 @@ private struct BridgeMenuView: View {
             message = nil
             controller.testConnection(config: settings.makeConfig(token: token))
         } catch { message = error.localizedDescription }
+    }
+
+    private func updateLaunchAtLogin(_ enabled: Bool) {
+        guard didLoad else { return }
+        do {
+            try settings.setLaunchAtLogin(enabled)
+            message = enabled ? "Autostart aktiviert" : "Autostart deaktiviert"
+        } catch {
+            message = "Autostart: \(error.localizedDescription)"
+        }
     }
 
     private func startBridge() {

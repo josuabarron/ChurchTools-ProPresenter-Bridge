@@ -16,7 +16,7 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 - Optional restriction to locked agendas
 - Fixed localhost URL for the currently selected Live Agenda
 - Login token stored in macOS Keychain
-- Automatic server startup and compact menu bar interface
+- Automatic bridge startup whenever the app opens and optional launch at login
 - Copyable diagnostic log hidden behind a triple click between Restart and Quit
 
 ## Requirements
@@ -35,6 +35,8 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 5. Click **Verbindung prüfen**, then use the restart icon.
 
 Settings are saved automatically. The login token is stored in Keychain and is never written to the repository or diagnostic log.
+
+The **App bei Anmeldung öffnen** switch uses the native macOS login-item service. The bridge itself starts whenever the app opens; the switch only controls whether macOS opens the app after login.
 
 ## ProPresenter MIDI
 
