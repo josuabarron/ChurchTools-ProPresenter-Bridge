@@ -83,4 +83,6 @@ The public ChurchTools REST API supplies events and agendas. Live position is co
 
 ## License
 
-No license has been selected yet. Until one is added, normal copyright rules apply.
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). You may use, modify, and redistribute the software for noncommercial purposes. Commercial use, resale, and use in a commercial product or service are not permitted.
+
+This is a source-available license, not an OSI-approved open-source license.
