@@ -19,6 +19,13 @@ final class Bridge {
     }
 
     func run() async throws {
+        let redirectServer = try LiveAgendaRedirectServer(port: config.redirectPort) { [weak self] in
+            self?.liveAgendaURL()
+        }
+        redirectServer.start()
+        self.redirectServer = redirectServer
+        onStatus(.redirectListening(port: config.redirectPort))
+
         do {
             try await churchTools.checkConnection()
             onStatus(.churchToolsConnected)
@@ -39,13 +46,6 @@ final class Bridge {
             print("No matching ChurchTools event found yet. /churchtools/reload-event can retry.")
             onStatus(.noEvent)
         }
-
-        let redirectServer = try LiveAgendaRedirectServer(port: config.redirectPort) { [weak self] in
-            self?.liveAgendaURL()
-        }
-        redirectServer.start()
-        self.redirectServer = redirectServer
-        onStatus(.redirectListening(port: config.redirectPort))
 
         let listener = try MIDIListener()
         print("Listening for MIDI notes \(config.midiPreviousNote), \(config.midiNextNote), and \(config.midiGoToNote)")

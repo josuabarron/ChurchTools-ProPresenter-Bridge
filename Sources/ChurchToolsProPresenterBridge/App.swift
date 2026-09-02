@@ -11,8 +11,20 @@ struct ChurchToolsProPresenterBridgeApp: App {
         } label: {
             Image(systemName: "list.bullet.clipboard")
                 .accessibilityLabel("ChurchTools Bridge: \(controller.summary)")
+                .onAppear(perform: startBridgeAtLaunch)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    private func startBridgeAtLaunch() {
+        let token = settings.loadToken()
+        guard !token.isEmpty, !controller.isRunning else { return }
+        do {
+            try settings.save(token: token)
+            controller.start(config: settings.makeConfig(token: token))
+        } catch {
+            // The settings UI shows validation errors when opened.
+        }
     }
 }
 
@@ -94,7 +106,7 @@ private struct BridgeMenuView: View {
         .onAppear {
             token = settings.loadToken()
             didLoad = true
-            if !token.isEmpty {
+            if !token.isEmpty && !controller.isRunning {
                 startBridge()
             }
         }
