@@ -1,0 +1,16 @@
+{
+  "midiPreviousNote": 60,
+  "midiNextNote": 61,
+  "midiGoToNote": 62,
+  "goToPosition": 3,
+  "redirectPort": 8765,
+  "churchToolsBaseURL": "https://example.church.tools/api",
+  "liveAgendaLoginToken": null,
+  "liveAgendaUserID": null,
+  "churchToolsToken": "",
+  "churchToolsCSRFToken": null,
+  "eventSearchDays": 14,
+  "eventNameContains": null,
+  "requireLockedAgenda": true,
+  "debounceMilliseconds": 800
+}
