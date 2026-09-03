@@ -7,6 +7,7 @@ final class ChurchToolsClient {
     private var sessionCSRFToken: String?
     private let browserTabID = UUID().uuidString
     private let decoder: JSONDecoder
+    private var agendaCache: [Int: ChurchToolsAgenda] = [:]
 
     init(baseURL: URL, token: String, csrfToken: String? = nil) {
         self.baseURL = baseURL
@@ -27,6 +28,14 @@ final class ChurchToolsClient {
     }
 
     func selectEvent(searchDays: Int, nameContains: String?, requireLockedAgenda: Bool) async throws -> ChurchToolsEvent? {
+        try await candidateEvents(
+            searchDays: searchDays,
+            nameContains: nameContains,
+            requireLockedAgenda: requireLockedAgenda
+        ).first
+    }
+
+    func candidateEvents(searchDays: Int, nameContains: String?, requireLockedAgenda: Bool) async throws -> [ChurchToolsEvent] {
         let calendar = Calendar(identifier: .gregorian)
         let now = Date()
         let from = Self.dateFormatter.string(from: now)
@@ -51,15 +60,42 @@ final class ChurchToolsClient {
             }
             .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
 
+        var withAgendas: [ChurchToolsEvent] = []
+        var selectedDay: Date?
+        let dayCalendar = Calendar.current
         for event in filtered {
-            guard requireLockedAgenda else { return event }
-            if try await loadAgenda(eventId: event.id).isLocked { return event }
+            if let selectedDay, let startDate = event.startDate,
+               !dayCalendar.isDate(startDate, inSameDayAs: selectedDay) {
+                break
+            }
+            guard let agenda = try? await loadAgenda(eventId: event.id) else { continue }
+            if !requireLockedAgenda || agenda.isLocked {
+                withAgendas.append(event)
+                selectedDay = selectedDay ?? event.startDate
+            }
         }
-        return nil
+        return withAgendas
+    }
+
+    func execute(_ target: SendTarget, eventId: Int) async throws {
+        switch target {
+        case .previous: try await triggerLiveAgenda(.previous, eventId: eventId)
+        case .next: try await triggerLiveAgenda(.next, eventId: eventId)
+        case .position(let position): try await setLiveAgendaPosition(eventId: eventId, position: position)
+        case .title(let title): try await setLiveAgendaPosition(eventId: eventId, position: try position(forTitle: title, eventId: eventId))
+        }
+    }
+
+    func position(forTitle title: String, eventId: Int) async throws -> Int {
+        let wanted = Self.normalized(title)
+        let items = try await loadAgenda(eventId: eventId).items.filter { $0.type != "header" }
+        guard let index = items.firstIndex(where: { Self.normalized($0.displayTitle) == wanted }) else {
+            throw BridgeError.agendaTitleNotFound(title)
+        }
+        return index + 1
     }
 
     func triggerLiveAgenda(_ kind: AgendaCommand.Kind, eventId: Int) async throws {
-        guard kind != .reloadEvent else { return }
         let agenda = try await loadAgenda(eventId: eventId)
         let position = try await loadLivePosition(eventId: eventId, agendaId: agenda.id)
         let items = agenda.items.filter { $0.type != "header" }
@@ -70,8 +106,6 @@ final class ChurchToolsClient {
             newPosition = Self.nextPosition(after: position.position, items: items)
         case .previous:
             newPosition = max(0, position.position - 1)
-        case .goToPosition, .reloadEvent:
-            return
         }
 
         guard newPosition != position.position else { return }
@@ -87,6 +121,13 @@ final class ChurchToolsClient {
         try await saveLivePosition(eventId: eventId, position: position)
     }
 
+    func loadLiveSnapshot(eventId: Int) async throws -> ChurchToolsLiveSnapshot {
+        let agenda = try await loadAgenda(eventId: eventId)
+        let livePosition = try await loadLivePosition(eventId: eventId, agendaId: agenda.id)
+        let items = agenda.items.filter { $0.type != "header" }
+        return ChurchToolsLiveSnapshot(position: livePosition.position, items: items)
+    }
+
     static func nextPosition(after currentPosition: Int, items: [ChurchToolsAgendaItem]) -> Int {
         // Position 0 is "not started"; the position after the final item is "end".
         let endPosition = items.count + 1
@@ -99,12 +140,14 @@ final class ChurchToolsClient {
         return min(candidate, endPosition)
     }
 
-    private func loadAgenda(eventId: Int) async throws -> ChurchToolsAgenda {
+    func loadAgenda(eventId: Int) async throws -> ChurchToolsAgenda {
+        if let cached = agendaCache[eventId] { return cached }
         let response: ChurchToolsAgendaResponse = try await get(
             "/events/\(eventId)/agenda",
             queryItems: [],
             responseType: ChurchToolsAgendaResponse.self
         )
+        agendaCache[eventId] = response.data
         return response.data
     }
 
@@ -224,6 +267,11 @@ final class ChurchToolsClient {
         throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported date format: \(value)")
     }
 
+    private static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
     private func makeURL(path: String) -> URL {
         let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
         return baseURL.appendingPathComponent(relativePath)
@@ -243,9 +291,42 @@ struct ChurchToolsAgenda: Decodable {
 struct ChurchToolsAgendaItem: Decodable {
     var type: String
     var duration: Int
+    var title: String?
+    var name: String?
     var song: ChurchToolsAgendaSong?
+    var note: String?
+    var notes: String?
+    var comment: String?
+    var comments: String?
+    var description: String?
+
+    var displayTitle: String { title ?? name ?? song?.title ?? song?.name ?? "" }
+    var displayNotes: String {
+        [note, notes, comment, comments, description]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+    }
+
+    enum CodingKeys: String, CodingKey { case type, duration, title, name, song, note, notes, comment, comments, description }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = (try? container.decode(String.self, forKey: .type)) ?? "item"
+        duration = (try? container.decode(Int.self, forKey: .duration)) ?? 0
+        title = try? container.decode(String.self, forKey: .title)
+        name = try? container.decode(String.self, forKey: .name)
+        song = try? container.decode(ChurchToolsAgendaSong.self, forKey: .song)
+        note = try? container.decode(String.self, forKey: .note)
+        notes = try? container.decode(String.self, forKey: .notes)
+        comment = try? container.decode(String.self, forKey: .comment)
+        comments = try? container.decode(String.self, forKey: .comments)
+        description = try? container.decode(String.self, forKey: .description)
+    }
 }
-struct ChurchToolsAgendaSong: Decodable {}
+struct ChurchToolsAgendaSong: Decodable {
+    var title: String?
+    var name: String?
+}
 struct ChurchToolsEvent: Decodable {
     var id: Int
     var name: String
@@ -293,6 +374,27 @@ private struct ChurchToolsLivePosition: Decodable {
         }
     }
 }
+struct ChurchToolsLiveSnapshot {
+    let position: Int
+    let items: [ChurchToolsAgendaItem]
+
+    var current: ChurchToolsAgendaItem? {
+        guard (1...items.count).contains(position) else { return nil }
+        return items[position - 1]
+    }
+
+    var previous: ChurchToolsAgendaItem? {
+        let previousPosition = position - 1
+        guard (1...items.count).contains(previousPosition) else { return nil }
+        return items[previousPosition - 1]
+    }
+
+    var next: ChurchToolsAgendaItem? {
+        let nextPosition = position + 1
+        guard (1...items.count).contains(nextPosition) else { return nil }
+        return items[nextPosition - 1]
+    }
+}
 private struct EmptyLegacyData: Decodable {
     init(from decoder: Decoder) throws {}
 }
@@ -303,6 +405,7 @@ enum BridgeError: LocalizedError {
     case legacy(String)
     case noMatchingEvent
     case invalidAgendaPosition(Int, maximum: Int)
+    case agendaTitleNotFound(String)
 
     var errorDescription: String? {
         switch self {
@@ -312,6 +415,7 @@ enum BridgeError: LocalizedError {
         case .noMatchingEvent: return "Kein passendes ChurchTools-Event mit Agenda gefunden."
         case .invalidAgendaPosition(let position, let maximum):
             return "Agenda-Position \(position) ist ungültig. Erlaubt sind 0 bis \(maximum)."
+        case .agendaTitleNotFound(let title): return "Kein Agenda-Eintrag mit dem Titel „\(title)“ gefunden."
         }
     }
 }

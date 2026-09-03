@@ -12,6 +12,8 @@ final class BridgeController: ObservableObject {
     @Published private(set) var isSendingCommand = false
     @Published private(set) var commandStatus: String?
     @Published private(set) var logEntries: [String] = []
+    @Published private(set) var availableEvents: [EventOption] = []
+    @Published private(set) var selectedEventID: Int?
 
     private var bridgeTask: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
@@ -26,23 +28,6 @@ final class BridgeController: ObservableObject {
         }
     }
 
-    var menuBarIcon: String {
-        isChurchToolsConnected && isProPresenterConnected
-            ? "checkmark.circle.fill"
-            : "circle.fill"
-    }
-
-    var menuBarColor: Color {
-        switch (isChurchToolsConnected, isProPresenterConnected) {
-        case (true, true): return .green
-        case (true, false): return .blue
-        case (false, true): return .orange
-        case (false, false): return .red
-        }
-    }
-
-    var statusColor: Color { menuBarColor }
-
     var logText: String { logEntries.joined(separator: "\n") }
 
     func testConnection(config: BridgeConfig) {
@@ -53,11 +38,7 @@ final class BridgeController: ObservableObject {
         hasCheckedConnection = true
         connectionTask = Task {
             do {
-                let client = ChurchToolsClient(
-                    baseURL: config.churchToolsBaseURL,
-                    token: config.churchToolsToken,
-                    csrfToken: config.churchToolsCSRFToken
-                )
+                let client = makeClient(config)
                 try await client.checkConnection()
                 guard !Task.isCancelled else { return }
                 churchToolsStatus = "Verbunden"
@@ -79,7 +60,6 @@ final class BridgeController: ObservableObject {
         churchToolsStatus = "Prüfe..."
         midiStatus = "Starte..."
         isProPresenterConnected = false
-
         bridgeTask = Task {
             let bridge = Bridge(config: config) { [weak self] status in
                 Task { @MainActor in self?.apply(status) }
@@ -87,7 +67,6 @@ final class BridgeController: ObservableObject {
             do {
                 try await bridge.run()
             } catch is CancellationError {
-                // Normal stop.
             } catch {
                 isRunning = false
                 midiStatus = "Fehler: \(error.localizedDescription)"
@@ -96,66 +75,29 @@ final class BridgeController: ObservableObject {
         }
     }
 
-    func sendTestCommand(_ kind: AgendaCommand.Kind, config: BridgeConfig) {
+    func sendTest(_ send: SendActionSetting, config: BridgeConfig) {
         commandTask?.cancel()
         isSendingCommand = true
-        commandStatus = kind == .next ? "Sende Weiter..." : "Sende Zurück..."
-
+        commandStatus = "Sende \(send.target)..."
         commandTask = Task {
             defer { isSendingCommand = false }
             do {
-                let client = ChurchToolsClient(
-                    baseURL: config.churchToolsBaseURL,
-                    token: config.churchToolsToken,
-                    csrfToken: config.churchToolsCSRFToken
-                )
-                try await client.checkConnection()
-                guard let event = try await client.selectEvent(
+                let client = makeClient(config)
+                let events = try await client.candidateEvents(
                     searchDays: config.eventSearchDays,
                     nameContains: config.eventNameContains,
                     requireLockedAgenda: config.requireLockedAgenda
-                ) else {
+                )
+                guard let event = events.first(where: { $0.id == config.preferredEventID }) ?? events.first else {
                     throw BridgeError.noMatchingEvent
                 }
-                try await client.triggerLiveAgenda(kind, eventId: event.id)
-                guard !Task.isCancelled else { return }
-                isChurchToolsConnected = true
-                churchToolsStatus = "Verbunden · \(event.name)"
-                commandStatus = kind == .next ? "Weiter gesendet" : "Zurück gesendet"
-                addLog("Testkommando \(kind.rawValue) für Event #\(event.id) gesendet")
-            } catch {
-                guard !Task.isCancelled else { return }
-                let detail = Self.errorDetail(error)
-                commandStatus = "Fehler: \(detail)"
-                addLog("Testkommando fehlgeschlagen: \(detail)")
-            }
-        }
-    }
-
-    func sendTestPosition(config: BridgeConfig) {
-        commandTask?.cancel()
-        isSendingCommand = true
-        commandStatus = "Gehe zu Position \(config.goToPosition)..."
-        commandTask = Task {
-            defer { isSendingCommand = false }
-            do {
-                let client = ChurchToolsClient(
-                    baseURL: config.churchToolsBaseURL,
-                    token: config.churchToolsToken,
-                    csrfToken: config.churchToolsCSRFToken
-                )
-                guard let event = try await client.selectEvent(
-                    searchDays: config.eventSearchDays,
-                    nameContains: config.eventNameContains,
-                    requireLockedAgenda: config.requireLockedAgenda
-                ) else { throw BridgeError.noMatchingEvent }
-                try await client.setLiveAgendaPosition(eventId: event.id, position: config.goToPosition)
-                commandStatus = "Position \(config.goToPosition) gesetzt"
-                addLog("Testkommando Position \(config.goToPosition) für Event #\(event.id) gesendet")
+                try await client.execute(send.resolvedTarget, eventId: event.id)
+                commandStatus = "\(send.target) gesendet"
+                addLog("Test-Send \(send.target) für Event #\(event.id) gesendet")
             } catch {
                 let detail = Self.errorDetail(error)
                 commandStatus = "Fehler: \(detail)"
-                addLog("Positionskommando fehlgeschlagen: \(detail)")
+                addLog("Test-Send fehlgeschlagen: \(detail)")
             }
         }
     }
@@ -172,65 +114,55 @@ final class BridgeController: ObservableObject {
         addLog("Bridge gestoppt")
     }
 
+    private func makeClient(_ config: BridgeConfig) -> ChurchToolsClient {
+        ChurchToolsClient(baseURL: config.churchToolsBaseURL, token: config.churchToolsToken, csrfToken: config.churchToolsCSRFToken)
+    }
+
     private func apply(_ status: BridgeRuntimeStatus) {
         switch status {
         case .churchToolsConnected:
-            hasCheckedConnection = true
-            churchToolsStatus = "Verbunden"
-            isChurchToolsConnected = true
+            hasCheckedConnection = true; churchToolsStatus = "Verbunden"; isChurchToolsConnected = true
             addLog("ChurchTools verbunden")
         case .churchToolsFailed(let message):
-            hasCheckedConnection = true
-            churchToolsStatus = "Fehler: \(message)"
-            isChurchToolsConnected = false
+            hasCheckedConnection = true; churchToolsStatus = "Fehler: \(message)"; isChurchToolsConnected = false
             addLog("ChurchTools-Fehler: \(message)")
-        case .midiListening(let previousNote, let nextNote, let goToNote):
-            midiStatus = "Bereit · Noten \(previousNote)/\(nextNote)/\(goToNote)"
-            addLog("MIDI bereit: Zurück=\(previousNote), Weiter=\(nextNote), Position=\(goToNote)")
+        case .midiListening(let notes):
+            midiStatus = "Bereit · \(notes.map(String.init).joined(separator: "/"))"
+            addLog("MIDI bereit: Noten \(notes.map(String.init).joined(separator: ", "))")
         case .midiMessageReceived(let note, let channel):
-            isProPresenterConnected = true
-            midiStatus = "Note \(note) · Kanal \(channel)"
+            isProPresenterConnected = true; midiStatus = "Note \(note) · Kanal \(channel)"
             addLog("MIDI Note On empfangen: Note \(note), Kanal \(channel)")
-        case .eventSelected(let name):
-            isChurchToolsConnected = true
-            churchToolsStatus = "Verbunden · \(name)"
+        case .eventOptions(let events, let selectedID):
+            availableEvents = events; selectedEventID = selectedID
+            addLog("\(events.count) Agenda(s) für den ausgewählten Tag geladen")
+        case .eventSelected(let id, let name):
+            selectedEventID = id; isChurchToolsConnected = true; churchToolsStatus = "Verbunden · \(name)"
+            addLog("Agenda-Cache für Event #\(id) bereit")
         case .noEvent:
-            isChurchToolsConnected = true
-            churchToolsStatus = "Verbunden · Kein Event"
-            addLog("Kein passendes ChurchTools-Event gefunden")
+            availableEvents = []; selectedEventID = nil; isChurchToolsConnected = true
+            churchToolsStatus = "Verbunden · Kein Event"; addLog("Kein passendes ChurchTools-Event gefunden")
         case .commandSucceeded(let command):
-            commandStatus = "\(command) gesendet"
-            addLog("ChurchTools-Kommando gesendet: \(command)")
+            commandStatus = "\(command) gesendet"; addLog("ChurchTools-Send: \(command)")
         case .commandFailed(let message):
-            commandStatus = "Fehler: \(message)"
-            addLog("ChurchTools-Kommando fehlgeschlagen: \(message)")
+            commandStatus = "Fehler: \(message)"; addLog("ChurchTools-Send fehlgeschlagen: \(message)")
         case .redirectListening(let port):
-            redirectStatus = "http://127.0.0.1:\(port)/live"
-            addLog("Lokale Live-Agenda-URL bereit: \(redirectStatus)")
+            redirectStatus = "http://127.0.0.1:\(port)/live"; addLog("Lokale Live-Agenda-URL bereit: \(redirectStatus)")
         }
     }
 
-    func clearLog() {
-        logEntries.removeAll()
-    }
+    func clearLog() { logEntries.removeAll() }
 
     private func addLog(_ message: String) {
         let timestamp = Self.logTimeFormatter.string(from: Date())
         logEntries.append("[\(timestamp)] \(message)")
-        if logEntries.count > 200 {
-            logEntries.removeFirst(logEntries.count - 200)
-        }
+        if logEntries.count > 200 { logEntries.removeFirst(logEntries.count - 200) }
     }
 
     private static let logTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "de_DE")
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "de_DE"); formatter.dateFormat = "HH:mm:ss"; return formatter
     }()
 
     private static func errorDetail(_ error: Error) -> String {
-        if error is DecodingError { return String(describing: error) }
-        return error.localizedDescription
+        error is DecodingError ? String(describing: error) : error.localizedDescription
     }
 }

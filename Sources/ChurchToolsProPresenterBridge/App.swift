@@ -45,6 +45,15 @@ private struct BridgeMenuView: View {
                 Text(controller.summary).font(.caption).foregroundStyle(.secondary)
             }
 
+            if controller.availableEvents.count > 1 {
+                Picker("Agenda", selection: eventSelection) {
+                    ForEach(controller.availableEvents) { event in
+                        Text(event.displayName).tag(event.id)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             Divider()
             StatusRow(title: "ChurchTools", detail: controller.churchToolsStatus, icon: "network")
             StatusRow(title: "ProPresenter MIDI", detail: controller.midiStatus, icon: "pianokeys")
@@ -56,16 +65,6 @@ private struct BridgeMenuView: View {
                     .disabled(!controller.redirectStatus.hasPrefix("http"))
             }
 
-            Divider()
-            HStack {
-                Text("Live-Agenda testen").font(.subheadline)
-                Spacer()
-                Button { send(.previous) } label: { Label("Zurück", systemImage: "chevron.left") }
-                Button { send(.next) } label: { Label("Weiter", systemImage: "chevron.right") }
-                Button(action: sendPosition) { Label("Pos. \(settings.goToPosition)", systemImage: "scope") }
-            }
-            .disabled(controller.isSendingCommand)
-
             if let status = controller.commandStatus {
                 Text(status).font(.caption)
                     .foregroundStyle(status.hasPrefix("Fehler") ? Color.red : Color.secondary)
@@ -75,6 +74,8 @@ private struct BridgeMenuView: View {
             DisclosureGroup("Einstellungen", isExpanded: $showSettings) {
                 VStack(alignment: .leading, spacing: 14) {
                     churchToolsSettings
+                    Divider()
+                    sendsSettings
                     Divider()
                     proPresenterSettings
                 }
@@ -114,11 +115,8 @@ private struct BridgeMenuView: View {
         .onChange(of: settings.baseURL) { _ in autoSave() }
         .onChange(of: settings.eventNameContains) { _ in autoSave() }
         .onChange(of: settings.liveAgendaUserID) { _ in autoSave() }
-        .onChange(of: settings.goToPosition) { _ in autoSave() }
+        .onChange(of: settings.sends) { _ in autoSave() }
         .onChange(of: settings.requireLockedAgenda) { _ in autoSave() }
-        .onChange(of: settings.midiPreviousNote) { _ in autoSave() }
-        .onChange(of: settings.midiNextNote) { _ in autoSave() }
-        .onChange(of: settings.midiGoToNote) { _ in autoSave() }
         .onChange(of: settings.redirectPort) { _ in autoSave() }
         .onChange(of: settings.launchAtLogin) { enabled in updateLaunchAtLogin(enabled) }
     }
@@ -133,9 +131,6 @@ private struct BridgeMenuView: View {
                 LabeledField("User-ID") {
                     TextField("0", value: $settings.liveAgendaUserID, format: .number.grouping(.never))
                 }.frame(width: 82)
-                LabeledField("Startposition") {
-                    TextField("3", value: $settings.goToPosition, format: .number.grouping(.never))
-                }.frame(width: 100)
                 Toggle("Nur gesperrte Agenda", isOn: $settings.requireLockedAgenda).padding(.bottom, 3)
             }
             Button("Verbindung prüfen", action: testConnection)
@@ -143,20 +138,36 @@ private struct BridgeMenuView: View {
         }
     }
 
+    private var sendsSettings: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Sends").font(.subheadline).fontWeight(.semibold)
+            ForEach($settings.sends) { $send in
+                HStack(alignment: .bottom, spacing: 8) {
+                    LabeledField("Ziel") { TextField("vor, zurück, 3 oder Titel", text: $send.target) }
+                    LabeledField("MIDI-Note") {
+                        TextField("60", value: $send.midiNote, format: .number.grouping(.never))
+                    }.frame(width: 88)
+                    Button {
+                        settings.sends.removeAll { $0.id == send.id }
+                    } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless)
+                    .help("Send entfernen")
+                    .padding(.bottom, 5)
+                }
+            }
+            Button {
+                let used = Set(settings.sends.map(\.midiNote))
+                let note = (0...127).first { !used.contains($0) } ?? 0
+                settings.sends.append(SendActionSetting(target: "", midiNote: note))
+            } label: { Label("Send hinzufügen", systemImage: "plus") }
+            Text("Zahlen springen zu einer Position. Jeder andere Text sucht den gleichnamigen Agenda-Titel.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var proPresenterSettings: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("ProPresenter").font(.subheadline).fontWeight(.semibold)
-            HStack(spacing: 10) {
-                LabeledField("Zurück") {
-                    TextField("60", value: $settings.midiPreviousNote, format: .number.grouping(.never))
-                }
-                LabeledField("Weiter") {
-                    TextField("61", value: $settings.midiNextNote, format: .number.grouping(.never))
-                }
-                LabeledField("Zur Position") {
-                    TextField("62", value: $settings.midiGoToNote, format: .number.grouping(.never))
-                }
-            }
             Text("MIDI-Noten auf Kanal 1 mit Intensität größer 0 senden. ProPresenter nach dem ersten Start der Bridge neu starten, damit der MIDI-Port sichtbar wird.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -167,6 +178,13 @@ private struct BridgeMenuView: View {
         VStack(alignment: .leading, spacing: 9) {
             Divider()
             Text("Diagnose & Server").font(.subheadline).fontWeight(.semibold)
+            Text("Live-Agenda testen").font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96))], spacing: 8) {
+                ForEach(settings.sends) { send in
+                    Button(send.target.isEmpty ? "Unbenannt" : send.target) { sendTest(send) }
+                        .disabled(controller.isSendingCommand || send.target.isEmpty)
+                }
+            }
             LabeledField("Localhost-Port") {
                 TextField("8765", value: $settings.redirectPort, format: .number.grouping(.never))
             }
@@ -183,6 +201,16 @@ private struct BridgeMenuView: View {
                 Spacer()
             }
         }
+    }
+
+    private var eventSelection: Binding<Int> {
+        Binding(
+            get: { controller.selectedEventID ?? controller.availableEvents.first?.id ?? 0 },
+            set: { id in
+                settings.preferredEventID = id
+                startBridge()
+            }
+        )
     }
 
     private func autoSave() {
@@ -222,17 +250,10 @@ private struct BridgeMenuView: View {
         } catch { message = error.localizedDescription }
     }
 
-    private func send(_ kind: AgendaCommand.Kind) {
+    private func sendTest(_ send: SendActionSetting) {
         do {
             try settings.save(token: token)
-            controller.sendTestCommand(kind, config: settings.makeConfig(token: token))
-        } catch { message = error.localizedDescription; showSettings = true }
-    }
-
-    private func sendPosition() {
-        do {
-            try settings.save(token: token)
-            controller.sendTestPosition(config: settings.makeConfig(token: token))
+            controller.sendTest(send, config: settings.makeConfig(token: token))
         } catch { message = error.localizedDescription; showSettings = true }
     }
 

@@ -11,10 +11,10 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 ## Features
 
 - Virtual CoreMIDI destination named `ChurchTools Bridge`
-- Previous, next, and configurable agenda-position commands
-- Automatic selection of the next matching ChurchTools event
+- Configurable MIDI sends for previous, next, agenda position, or agenda title
+- Automatic selection of the next matching ChurchTools event, with manual choice when multiple matching agendas exist on the same day
 - Optional restriction to locked agendas
-- Fixed localhost URL for the currently selected Live Agenda
+- Fixed localhost URLs for the current Live Agenda, compact strip view, and notes view
 - Login token stored in macOS Keychain
 - Automatic bridge startup whenever the app opens and optional launch at login
 - Copyable diagnostic log hidden behind a triple click between Restart and Quit
@@ -31,7 +31,7 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 1. Open the menu bar item and expand **Einstellungen**.
 2. Enter the API URL, for example `https://example.church.tools/api`.
 3. Enter the login token and ChurchTools user ID.
-4. Configure the start position and MIDI notes if needed.
+4. Configure the MIDI sends if needed.
 5. Click **Verbindung prüfen**, then use the restart icon.
 
 Settings are saved automatically. The login token is stored in Keychain and is never written to the repository or diagnostic log.
@@ -40,11 +40,18 @@ The **App bei Anmeldung öffnen** switch uses the native macOS login-item servic
 
 ## ProPresenter MIDI
 
-| Action | Default note |
+| Send | Default note |
 | --- | ---: |
-| Previous | 60 |
-| Next | 61 |
-| Go to configured position | 62 |
+| `zurück` | 60 |
+| `vor` | 61 |
+| `3` | 62 |
+
+The send target decides what happens:
+
+- `zurück`, `previous`, or `back` moves the Live Agenda back.
+- `vor`, `weiter`, `next`, or `forward` moves it forward.
+- A number jumps to that agenda position.
+- Any other text searches the current agenda for a matching title and jumps there.
 
 Send MIDI Note On messages on channel 1 with velocity greater than zero. Restart ProPresenter after the bridge first creates its virtual MIDI port.
 
@@ -52,9 +59,13 @@ Send MIDI Note On messages on channel 1 with velocity greater than zero. Restart
 
 ```text
 http://127.0.0.1:8765/live
+http://127.0.0.1:8765/live/strip
+http://127.0.0.1:8765/live/notes
 ```
 
-The server binds to localhost only and disables caching. The redirect includes the configured login token, so use it only on a trusted Mac with a tightly restricted ChurchTools function user.
+The server binds to localhost only and disables caching. `/live` redirects to the ChurchTools Live Agenda and includes the configured login token, so use it only on a trusted Mac with a tightly restricted ChurchTools function user.
+
+`/live/strip` renders a compact local view with the current and next agenda item. `/live/notes` renders only the notes for the current item. Both update without a full page reload.
 
 ## Build
 

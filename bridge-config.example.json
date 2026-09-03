@@ -1,8 +1,10 @@
 {
-  "midiPreviousNote": 60,
-  "midiNextNote": 61,
-  "midiGoToNote": 62,
-  "goToPosition": 3,
+  "sends": [
+    { "target": "zurück", "midiNote": 60 },
+    { "target": "vor", "midiNote": 61 },
+    { "target": "3", "midiNote": 62 },
+    { "target": "Ansagen", "midiNote": 63 }
+  ],
   "redirectPort": 8765,
   "churchToolsBaseURL": "https://example.church.tools/api",
   "liveAgendaLoginToken": null,
