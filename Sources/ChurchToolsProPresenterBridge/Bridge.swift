@@ -93,6 +93,18 @@ final class Bridge {
             return await liveStripData()
         case .notesData:
             return await liveNotesData()
+        case .stripEvents:
+            return .eventStream { [weak self] in
+                guard let self else { return Self.errorJSON("Bridge is no longer running.") }
+                if case .json(let body) = await self.liveStripData() { return body }
+                return Self.errorJSON("Strip data is unavailable.")
+            }
+        case .notesEvents:
+            return .eventStream { [weak self] in
+                guard let self else { return Self.errorJSON("Bridge is no longer running.") }
+                if case .json(let body) = await self.liveNotesData() { return body }
+                return Self.errorJSON("Notes data is unavailable.")
+            }
         }
     }
 
@@ -205,10 +217,10 @@ final class Bridge {
           el.style.fontSize = Math.floor(low) + "px";
         };
         const fitAll = () => fields.forEach(fit);
-        const refresh = async () => {
+        const source = new EventSource("/live/strip.events");
+        source.onmessage = event => {
           try {
-            const response = await fetch("/live/strip.json", { cache: "no-store" });
-            const data = await response.json();
+            const data = JSON.parse(event.data);
             setText("current", data.current || "Noch nicht gestartet");
             setText("next", data.next || "");
             fitAll();
@@ -216,7 +228,6 @@ final class Bridge {
         };
         window.addEventListener("resize", fitAll);
         fitAll();
-        setInterval(refresh, 750);
         </script>
         </body>
         </html>
@@ -255,10 +266,10 @@ final class Bridge {
           }
           notes.style.fontSize = Math.floor(low) + "px";
         };
-        const refresh = async () => {
+        const source = new EventSource("/live/notes.events");
+        source.onmessage = event => {
           try {
-            const response = await fetch("/live/notes.json", { cache: "no-store" });
-            const data = await response.json();
+            const data = JSON.parse(event.data);
             const text = data.notes || "Keine Notizen";
             if (notes.textContent !== text) notes.textContent = text;
             notes.classList.toggle("empty", !data.notes);
@@ -267,7 +278,6 @@ final class Bridge {
         };
         window.addEventListener("resize", fit);
         fit();
-        setInterval(refresh, 750);
         </script>
         </body>
         </html>
