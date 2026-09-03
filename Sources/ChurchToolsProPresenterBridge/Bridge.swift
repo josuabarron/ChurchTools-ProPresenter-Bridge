@@ -24,6 +24,10 @@ final class Bridge {
         }
         try await redirectServer.start()
         self.redirectServer = redirectServer
+        defer {
+            redirectServer.stop()
+            self.redirectServer = nil
+        }
         onStatus(.redirectListening(port: config.redirectPort))
 
         do {
@@ -85,26 +89,18 @@ final class Bridge {
                 return .unavailable("No matching ChurchTools event is selected.")
             }
             return .redirect(url)
+        case .help:
+            return .html(Self.helpHTML())
         case .strip:
             return await renderLiveStrip()
         case .notes:
             return await renderLiveNotes()
+        case .settingsData:
+            return .json(Self.settingsJSON())
         case .stripData:
             return await liveStripData()
         case .notesData:
             return await liveNotesData()
-        case .stripEvents:
-            return .eventStream { [weak self] in
-                guard let self else { return Self.errorJSON("Bridge is no longer running.") }
-                if case .json(let body) = await self.liveStripData() { return body }
-                return Self.errorJSON("Strip data is unavailable.")
-            }
-        case .notesEvents:
-            return .eventStream { [weak self] in
-                guard let self else { return Self.errorJSON("Bridge is no longer running.") }
-                if case .json(let body) = await self.liveNotesData() { return body }
-                return Self.errorJSON("Notes data is unavailable.")
-            }
         }
     }
 
@@ -191,9 +187,9 @@ final class Bridge {
         * { box-sizing: border-box; }
         body { margin: 0; min-height: 100vh; background: #050607; color: white; overflow: hidden; }
         .strip { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: min(4vw, 36px); align-items: center; min-height: 100vh; padding: min(4vw, 28px); }
-        .block { min-width: 0; display: grid; gap: min(.9vw, 8px); }
+        .block { min-width: 0; min-height: 0; display: grid; gap: min(.9vw, 8px); }
         .label { color: #7f858c; font-weight: 650; letter-spacing: 0; text-transform: uppercase; font-size: clamp(10px, 1.55vw, 20px); line-height: 1; }
-        .item { min-width: 0; white-space: nowrap; overflow: hidden; font-weight: 950; line-height: .92; }
+        .item { min-width: 0; max-height: 48vh; padding: .08em 0 .14em; white-space: normal; overflow: hidden; overflow-wrap: anywhere; font-weight: 950; line-height: 1.08; }
         .current { color: #ffffff; }
         .next { color: #d9dcdf; }
         </style>
@@ -207,20 +203,20 @@ final class Bridge {
         const fields = ["current", "next"].map(id => document.getElementById(id));
         const setText = (id, value) => { const el = document.getElementById(id); if (el.textContent !== value) el.textContent = value; };
         const fit = el => {
-          let low = 14, high = Math.max(22, Math.min(window.innerHeight * 0.86, window.innerWidth * 0.25));
+          let low = 12, high = Math.max(20, Math.min(window.innerHeight * 0.52, window.innerWidth * 0.22));
           el.style.fontSize = high + "px";
-          for (let i = 0; i < 10; i++) {
+          for (let i = 0; i < 12; i++) {
             const mid = (low + high) / 2;
             el.style.fontSize = mid + "px";
-            if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight) low = mid; else high = mid;
+            if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight + 1) low = mid; else high = mid;
           }
           el.style.fontSize = Math.floor(low) + "px";
         };
         const fitAll = () => fields.forEach(fit);
-        const source = new EventSource("/live/strip.events");
-        source.onmessage = event => {
+        const refresh = async () => {
           try {
-            const data = JSON.parse(event.data);
+            const response = await fetch("/live/strip.json?t=" + Date.now(), { cache: "no-store" });
+            const data = await response.json();
             setText("current", data.current || "Noch nicht gestartet");
             setText("next", data.next || "");
             fitAll();
@@ -228,6 +224,8 @@ final class Bridge {
         };
         window.addEventListener("resize", fitAll);
         fitAll();
+        refresh();
+        setInterval(refresh, 1000);
         </script>
         </body>
         </html>
@@ -247,8 +245,8 @@ final class Bridge {
         <style>
         :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
         * { box-sizing: border-box; }
-        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 5vw; background: #050607; color: #ffffff; overflow: hidden; }
-        .notes { width: 100%; max-height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 750; line-height: 1.12; text-align: center; }
+        body { margin: 0; min-height: 100vh; display: grid; align-items: center; padding: 5vw; background: #050607; color: #ffffff; overflow: hidden; }
+        .notes { width: 100%; max-height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 64px; font-weight: 750; line-height: 1.12; text-align: left; }
         .empty { color: #8f969e; }
         </style>
         </head>
@@ -256,29 +254,78 @@ final class Bridge {
         <main id="notes" class="notes \(notes.isEmpty ? "empty" : "")">\(body.htmlEscaped)</main>
         <script>
         const notes = document.getElementById("notes");
-        const fit = () => {
-          let low = 12, high = Math.max(24, Math.min(window.innerHeight * 0.5, window.innerWidth * 0.16));
-          notes.style.fontSize = high + "px";
-          for (let i = 0; i < 11; i++) {
-            const mid = (low + high) / 2;
-            notes.style.fontSize = mid + "px";
-            if (notes.scrollWidth <= notes.clientWidth && notes.scrollHeight <= notes.clientHeight) low = mid; else high = mid;
-          }
-          notes.style.fontSize = Math.floor(low) + "px";
-        };
-        const source = new EventSource("/live/notes.events");
-        source.onmessage = event => {
+        const applySettings = async () => {
           try {
-            const data = JSON.parse(event.data);
+            const response = await fetch("/live/settings.json?t=" + Date.now(), { cache: "no-store" });
+            const data = await response.json();
+            if (data.notesFontSize) notes.style.fontSize = data.notesFontSize + "px";
+          } catch (_) {}
+        };
+        const refresh = async () => {
+          try {
+            await applySettings();
+            const response = await fetch("/live/notes.json?t=" + Date.now(), { cache: "no-store" });
+            const data = await response.json();
             const text = data.notes || "Keine Notizen";
             if (notes.textContent !== text) notes.textContent = text;
             notes.classList.toggle("empty", !data.notes);
-            fit();
           } catch (_) {}
         };
-        window.addEventListener("resize", fit);
-        fit();
+        refresh();
+        setInterval(refresh, 1000);
         </script>
+        </body>
+        </html>
+        """
+    }
+
+    private static func helpHTML() -> String {
+        """
+        <!doctype html>
+        <html lang="de">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>ChurchTools Bridge Hilfe</title>
+        <style>
+        :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #111214; color: #f4f5f6; line-height: 1.5; }
+        main { max-width: 880px; margin: 0 auto; padding: 44px 28px 64px; }
+        h1 { font-size: 34px; margin: 0 0 8px; }
+        h2 { font-size: 20px; margin: 32px 0 8px; }
+        p, li { color: #c6c9ce; }
+        code { background: #24262a; color: #ffffff; padding: 2px 6px; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #303238; color: #dfe1e5; }
+        th { color: #ffffff; }
+        </style>
+        </head>
+        <body>
+        <main>
+        <h1>ChurchTools Bridge Hilfe</h1>
+        <p>Die App verbindet ProPresenter per MIDI mit der ChurchTools Live-Agenda und stellt lokale Browser-URLs fuer Einblendungen bereit.</p>
+
+        <h2>Lokale URLs</h2>
+        <table>
+        <tr><th>Icon</th><th>URL</th><th>Zweck</th></tr>
+        <tr><td>CT</td><td><code>/live</code></td><td>Leitet zur originalen ChurchTools Live-Agenda des aktuell gewaehlten Events weiter.</td></tr>
+        <tr><td>Line</td><td><code>/live/strip</code></td><td>Zeigt lokal nur Jetzt und Dann als kompakte Zeile.</td></tr>
+        <tr><td>Notes</td><td><code>/live/notes</code></td><td>Zeigt lokal nur die Notizen des aktuellen Agenda-Punkts.</td></tr>
+        </table>
+
+        <h2>ProPresenter</h2>
+        <p>Sende MIDI Note On auf Kanal 1 mit Velocity groesser 0 an das virtuelle CoreMIDI-Geraet <code>ChurchTools Bridge</code>. Nach dem ersten Start der Bridge muss ProPresenter eventuell neu gestartet werden, damit der MIDI-Port sichtbar wird.</p>
+
+        <h2>Sends</h2>
+        <p>Ein Send besteht aus Ziel und MIDI-Note. <code>vor</code> oder <code>weiter</code> geht vorwaerts, <code>zurueck</code> geht zurueck, eine Zahl springt zur Position, jeder andere Text sucht einen Agenda-Titel.</p>
+
+        <h2>Agenda-Auswahl</h2>
+        <p>Findet die Bridge mehrere passende Agenden am selben Tag, erscheint oben eine Auswahl. Die lokalen URLs zeigen immer das dort gewaehlte Event.</p>
+
+        <h2>Anzeige</h2>
+        <p>Die Notes-Schriftgroesse wird in den Einstellungen gespeichert und von <code>/live/notes</code> laufend lokal gelesen. Das aendert keine ChurchTools-Verbindung und benoetigt keinen Server-Neustart.</p>
+        </main>
         </body>
         </html>
         """
@@ -303,6 +350,11 @@ final class Bridge {
         """
         {"error":"\(message.jsonEscaped)"}
         """
+    }
+
+    private static func settingsJSON() -> String {
+        let size = UserDefaults.standard.object(forKey: "notesFontSize") as? Int ?? 64
+        return #"{"notesFontSize":\#(size)}"#
     }
 
 }

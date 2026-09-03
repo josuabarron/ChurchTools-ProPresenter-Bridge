@@ -16,6 +16,7 @@ final class BridgeController: ObservableObject {
     @Published private(set) var selectedEventID: Int?
 
     private var bridgeTask: Task<Void, Never>?
+    private var restartGeneration = 0
     private var connectionTask: Task<Void, Never>?
     private var commandTask: Task<Void, Never>?
 
@@ -54,13 +55,23 @@ final class BridgeController: ObservableObject {
     }
 
     func start(config: BridgeConfig) {
-        stop()
+        restartGeneration += 1
+        let generation = restartGeneration
+        bridgeTask?.cancel()
+        bridgeTask = nil
+        commandTask?.cancel()
+        commandTask = nil
         isRunning = true
         addLog("Bridge wird gestartet")
         churchToolsStatus = "Prüfe..."
         midiStatus = "Starte..."
+        redirectStatus = "Starte..."
         isProPresenterConnected = false
         bridgeTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            let isCurrentGeneration = await MainActor.run { generation == restartGeneration }
+            guard isCurrentGeneration else { return }
             let bridge = Bridge(config: config) { [weak self] status in
                 Task { @MainActor in self?.apply(status) }
             }
@@ -68,8 +79,10 @@ final class BridgeController: ObservableObject {
                 try await bridge.run()
             } catch is CancellationError {
             } catch {
+                guard !Task.isCancelled else { return }
                 isRunning = false
                 midiStatus = "Fehler: \(error.localizedDescription)"
+                redirectStatus = "Fehler"
                 addLog("Bridge gestoppt: \(error.localizedDescription)")
             }
         }
@@ -103,6 +116,7 @@ final class BridgeController: ObservableObject {
     }
 
     func stop() {
+        restartGeneration += 1
         bridgeTask?.cancel()
         bridgeTask = nil
         commandTask?.cancel()

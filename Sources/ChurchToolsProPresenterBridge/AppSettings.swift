@@ -9,6 +9,7 @@ final class AppSettings: ObservableObject {
     @Published var preferredEventID: Int?
     @Published var redirectPort: Int
     @Published var liveAgendaUserID: Int
+    @Published var notesFontSize: Int
     @Published var requireLockedAgenda: Bool
     @Published var launchAtLogin: Bool
 
@@ -32,6 +33,7 @@ final class AppSettings: ObservableObject {
         preferredEventID = nil
         redirectPort = defaults.object(forKey: "redirectPort") as? Int ?? 8765
         liveAgendaUserID = defaults.object(forKey: "liveAgendaUserID") as? Int ?? 0
+        notesFontSize = defaults.object(forKey: "notesFontSize") as? Int ?? 64
         requireLockedAgenda = defaults.object(forKey: "requireLockedAgenda") as? Bool ?? true
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
@@ -56,6 +58,7 @@ final class AppSettings: ObservableObject {
         }
         guard (1024...65535).contains(redirectPort) else { throw SettingsError.invalidRedirectPort }
         guard liveAgendaUserID >= 0 else { throw SettingsError.invalidLiveAgendaUserID }
+        guard (12...220).contains(notesFontSize) else { throw SettingsError.invalidNotesFontSize }
         guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SettingsError.missingToken
         }
@@ -65,11 +68,17 @@ final class AppSettings: ObservableObject {
         defaults.set(try JSONEncoder().encode(sends), forKey: "sendActions")
         defaults.set(redirectPort, forKey: "redirectPort")
         defaults.set(liveAgendaUserID, forKey: "liveAgendaUserID")
+        defaults.set(notesFontSize, forKey: "notesFontSize")
         defaults.set(requireLockedAgenda, forKey: "requireLockedAgenda")
         if cachedToken != token {
             try keychain.write(token, account: "login-token")
             cachedToken = token
         }
+    }
+
+    func saveDisplaySettings() throws {
+        guard (12...220).contains(notesFontSize) else { throw SettingsError.invalidNotesFontSize }
+        defaults.set(notesFontSize, forKey: "notesFontSize")
     }
 
     func setLaunchAtLogin(_ enabled: Bool) throws {
@@ -108,6 +117,7 @@ enum SettingsError: LocalizedError {
     case missingToken
     case invalidLiveAgendaUserID
     case invalidSendTarget
+    case invalidNotesFontSize
 
     var errorDescription: String? {
         switch self {
@@ -119,6 +129,7 @@ enum SettingsError: LocalizedError {
         case .missingToken: return "Bitte einen ChurchTools Login-Token eintragen."
         case .invalidLiveAgendaUserID: return "Die Live-Agenda User-ID darf nicht negativ sein."
         case .invalidSendTarget: return "Jeder Send benötigt ein Ziel."
+        case .invalidNotesFontSize: return "Die Notes-Schriftgröße muss zwischen 12 und 220 liegen."
         }
     }
 }

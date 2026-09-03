@@ -50,50 +50,10 @@ final class LiveAgendaRedirectServer: @unchecked Sendable {
             let route = Self.route(from: data)
             Task {
                 let response = await self.handler(route)
-                switch response {
-                case .eventStream(let makeEvent):
-                    self.sendEventStream(connection, makeEvent: makeEvent)
-                default:
-                    connection.send(content: Data(response.httpResponse.utf8), completion: .contentProcessed { _ in
-                        connection.cancel()
-                    })
-                }
-            }
-        }
-    }
-
-    private func sendEventStream(_ connection: NWConnection, makeEvent: @escaping () async -> String) {
-        let headers = """
-        HTTP/1.1 200 OK\r
-        Content-Type: text/event-stream; charset=utf-8\r
-        Cache-Control: no-store\r
-        Connection: keep-alive\r
-        X-Accel-Buffering: no\r
-        \r
-        """
-        connection.send(content: Data(headers.utf8), completion: .contentProcessed { [weak self] error in
-            guard error == nil else {
-                connection.cancel()
-                return
-            }
-            self?.sendNextEvent(connection, makeEvent: makeEvent)
-        })
-    }
-
-    private func sendNextEvent(_ connection: NWConnection, makeEvent: @escaping () async -> String) {
-        Task {
-            let payload = await makeEvent()
-            let event = "data: \(payload)\n\n"
-            connection.send(content: Data(event.utf8), completion: .contentProcessed { [weak self] error in
-                guard error == nil else {
+                connection.send(content: Data(response.httpResponse.utf8), completion: .contentProcessed { _ in
                     connection.cancel()
-                    return
-                }
-                Task {
-                    try? await Task.sleep(nanoseconds: 750_000_000)
-                    self?.sendNextEvent(connection, makeEvent: makeEvent)
-                }
-            })
+                })
+            }
         }
     }
 
@@ -110,8 +70,8 @@ final class LiveAgendaRedirectServer: @unchecked Sendable {
         let path = target.split(separator: "?").first.map(String.init) ?? "/live"
 
         switch path {
-        case "/live/strip.events": return .stripEvents
-        case "/live/notes.events": return .notesEvents
+        case "/help", "/live/help": return .help
+        case "/live/settings.json": return .settingsData
         case "/live/strip.json": return .stripData
         case "/live/notes.json": return .notesData
         case "/live/strip": return .strip
@@ -144,19 +104,18 @@ private final class ListenerStartState: @unchecked Sendable {
 
 enum LiveAgendaRoute {
     case live
+    case help
     case strip
     case notes
+    case settingsData
     case stripData
     case notesData
-    case stripEvents
-    case notesEvents
 }
 
 enum LiveAgendaServerResponse {
     case redirect(URL)
     case html(String)
     case json(String)
-    case eventStream(() async -> String)
     case unavailable(String)
 
     var httpResponse: String {
@@ -167,8 +126,6 @@ enum LiveAgendaServerResponse {
             return "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         case .json(let body):
             return "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
-        case .eventStream:
-            return ""
         case .unavailable(let body):
             return "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         }

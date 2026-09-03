@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct ChurchToolsProPresenterBridgeApp: App {
@@ -40,9 +41,15 @@ private struct BridgeMenuView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ChurchTools Bridge").font(.headline)
-                Text(controller.summary).font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ChurchTools Bridge").font(.headline)
+                    Text(controller.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(action: openHelp) { Image(systemName: "questionmark.circle") }
+                    .buttonStyle(.borderless)
+                    .help("Hilfe öffnen")
             }
 
             if controller.availableEvents.count > 1 {
@@ -57,11 +64,21 @@ private struct BridgeMenuView: View {
             Divider()
             StatusRow(title: "ChurchTools", detail: controller.churchToolsStatus, icon: "network")
             StatusRow(title: "ProPresenter MIDI", detail: controller.midiStatus, icon: "pianokeys")
-            HStack(spacing: 8) {
-                StatusRow(title: "Lokale Live-URL", detail: controller.redirectStatus, icon: "link")
-                Button(action: copyServerURL) { Image(systemName: "doc.on.doc") }
+            HStack(spacing: 10) {
+                Image(systemName: "link").frame(width: 18).foregroundStyle(.secondary)
+                Text("URLs")
+                Spacer()
+                Button(action: { copyServerURL(.churchTools) }) { Text("CT").font(.caption).fontWeight(.bold) }
                     .buttonStyle(.borderless)
-                    .help("Lokale Live-Agenda-URL kopieren")
+                    .help("ChurchTools Live-URL kopieren")
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button(action: { copyServerURL(.strip) }) { Image(systemName: "rectangle.split.2x1") }
+                    .buttonStyle(.borderless)
+                    .help("Line-URL kopieren")
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button(action: { copyServerURL(.notes) }) { Image(systemName: "note.text") }
+                    .buttonStyle(.borderless)
+                    .help("Notes-URL kopieren")
                     .disabled(!controller.redirectStatus.hasPrefix("http"))
             }
 
@@ -76,8 +93,6 @@ private struct BridgeMenuView: View {
                     churchToolsSettings
                     Divider()
                     sendsSettings
-                    Divider()
-                    proPresenterSettings
                 }
                 .padding(.top, 10)
             }
@@ -115,6 +130,7 @@ private struct BridgeMenuView: View {
         .onChange(of: settings.baseURL) { _ in autoSave() }
         .onChange(of: settings.eventNameContains) { _ in autoSave() }
         .onChange(of: settings.liveAgendaUserID) { _ in autoSave() }
+        .onChange(of: settings.notesFontSize) { _ in saveDisplaySettings() }
         .onChange(of: settings.sends) { _ in autoSave() }
         .onChange(of: settings.requireLockedAgenda) { _ in autoSave() }
         .onChange(of: settings.redirectPort) { _ in autoSave() }
@@ -131,6 +147,9 @@ private struct BridgeMenuView: View {
                 LabeledField("User-ID") {
                     TextField("0", value: $settings.liveAgendaUserID, format: .number.grouping(.never))
                 }.frame(width: 82)
+                LabeledField("Notes-Größe") {
+                    TextField("64", value: $settings.notesFontSize, format: .number.grouping(.never))
+                }.frame(width: 96)
                 Toggle("Nur gesperrte Agenda", isOn: $settings.requireLockedAgenda).padding(.bottom, 3)
             }
             Button("Verbindung prüfen", action: testConnection)
@@ -162,15 +181,6 @@ private struct BridgeMenuView: View {
             } label: { Label("Send hinzufügen", systemImage: "plus") }
             Text("Zahlen springen zu einer Position. Jeder andere Text sucht den gleichnamigen Agenda-Titel.")
                 .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private var proPresenterSettings: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("ProPresenter").font(.subheadline).fontWeight(.semibold)
-            Text("MIDI-Noten auf Kanal 1 mit Intensität größer 0 senden. ProPresenter nach dem ersten Start der Bridge neu starten, damit der MIDI-Port sichtbar wird.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -263,10 +273,56 @@ private struct BridgeMenuView: View {
         message = "Log kopiert"
     }
 
-    private func copyServerURL() {
+    private func copyServerURL(_ kind: LocalURLKind) {
+        guard let url = localURL(kind) else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(controller.redirectStatus, forType: .string)
-        message = "Lokale URL kopiert"
+        NSPasteboard.general.setString(url, forType: .string)
+        message = "\(kind.label) kopiert"
+    }
+
+    private func openHelp() {
+        if let url = localURL(.help).flatMap(URL.init(string:)) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func localURL(_ kind: LocalURLKind) -> String? {
+        guard controller.redirectStatus.hasPrefix("http") else { return nil }
+        let root = controller.redirectStatus.hasSuffix("/live")
+            ? String(controller.redirectStatus.dropLast(5))
+            : controller.redirectStatus
+        switch kind {
+        case .churchTools: return controller.redirectStatus
+        case .strip: return "\(controller.redirectStatus)/strip"
+        case .notes: return "\(controller.redirectStatus)/notes"
+        case .help: return "\(root)/help"
+        }
+    }
+
+    private func saveDisplaySettings() {
+        guard didLoad else { return }
+        do {
+            try settings.saveDisplaySettings()
+            message = nil
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+
+private enum LocalURLKind {
+    case churchTools
+    case strip
+    case notes
+    case help
+
+    var label: String {
+        switch self {
+        case .churchTools: return "CT-URL"
+        case .strip: return "Line-URL"
+        case .notes: return "Notes-URL"
+        case .help: return "Hilfe"
+        }
     }
 }
 
