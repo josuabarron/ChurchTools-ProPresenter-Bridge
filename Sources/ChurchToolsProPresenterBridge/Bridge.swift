@@ -6,7 +6,14 @@ final class Bridge {
     private var selectedEvent: ChurchToolsEvent?
     private var lastCommandAt: [UUID: Date] = [:]
     private var redirectServer: LiveAgendaRedirectServer?
+    private var cachedSnapshot: ChurchToolsLiveSnapshot?
+    private var cachedSnapshotAt: Date?
+    private var snapshotRefreshTask: Task<Void, Never>?
+    private var snapshotRequestTask: Task<ChurchToolsLiveSnapshot, Error>?
+    private var rateLimitedUntil: Date?
     private let onStatus: (BridgeRuntimeStatus) -> Void
+    private let minimumSnapshotAge: TimeInterval = 3
+    private let rateLimitBackoff: TimeInterval = 60
 
     init(config: BridgeConfig, onStatus: @escaping (BridgeRuntimeStatus) -> Void = { _ in }) {
         self.config = config
@@ -25,6 +32,7 @@ final class Bridge {
         try await redirectServer.start()
         self.redirectServer = redirectServer
         defer {
+            snapshotRefreshTask?.cancel()
             redirectServer.stop()
             self.redirectServer = nil
         }
@@ -50,6 +58,7 @@ final class Bridge {
 
         if let selectedEvent {
             onStatus(.eventSelected(id: selectedEvent.id, name: selectedEvent.name))
+            startSnapshotRefresh(eventId: selectedEvent.id)
         } else {
             onStatus(.noEvent)
         }
@@ -129,7 +138,7 @@ final class Bridge {
             return .unavailable("No matching ChurchTools event is selected.")
         }
         do {
-            let snapshot = try await churchTools.loadLiveSnapshot(eventId: selectedEvent.id)
+            let snapshot = try await liveSnapshot(eventId: selectedEvent.id)
             return .html(Self.stripHTML(for: snapshot, event: selectedEvent))
         } catch {
             return .unavailable(error.localizedDescription)
@@ -141,7 +150,7 @@ final class Bridge {
             return .unavailable("No matching ChurchTools event is selected.")
         }
         do {
-            let snapshot = try await churchTools.loadLiveSnapshot(eventId: selectedEvent.id)
+            let snapshot = try await liveSnapshot(eventId: selectedEvent.id)
             return .html(Self.notesHTML(for: snapshot, event: selectedEvent))
         } catch {
             return .unavailable(error.localizedDescription)
@@ -153,7 +162,7 @@ final class Bridge {
             return .json(Self.errorJSON("No matching ChurchTools event is selected."))
         }
         do {
-            let snapshot = try await churchTools.loadLiveSnapshot(eventId: selectedEvent.id)
+            let snapshot = try await liveSnapshot(eventId: selectedEvent.id)
             return .json(Self.stripJSON(for: snapshot, event: selectedEvent))
         } catch {
             return .json(Self.errorJSON(error.localizedDescription))
@@ -165,10 +174,61 @@ final class Bridge {
             return .json(Self.errorJSON("No matching ChurchTools event is selected."))
         }
         do {
-            let snapshot = try await churchTools.loadLiveSnapshot(eventId: selectedEvent.id)
+            let snapshot = try await liveSnapshot(eventId: selectedEvent.id)
             return .json(Self.notesJSON(for: snapshot, event: selectedEvent))
         } catch {
             return .json(Self.errorJSON(error.localizedDescription))
+        }
+    }
+
+    private func startSnapshotRefresh(eventId: Int) {
+        snapshotRefreshTask?.cancel()
+        snapshotRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    _ = try await self?.liveSnapshot(eventId: eventId)
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+            }
+        }
+    }
+
+    private func liveSnapshot(eventId: Int) async throws -> ChurchToolsLiveSnapshot {
+        let now = Date()
+        if let cachedSnapshot, let cachedSnapshotAt,
+           now.timeIntervalSince(cachedSnapshotAt) < minimumSnapshotAge {
+            return cachedSnapshot
+        }
+        if let rateLimitedUntil, now < rateLimitedUntil {
+            if let cachedSnapshot { return cachedSnapshot }
+            throw BridgeError.rateLimited(until: rateLimitedUntil)
+        }
+        if let snapshotRequestTask {
+            return try await snapshotRequestTask.value
+        }
+
+        do {
+            let requestTask = Task { try await churchTools.loadLiveSnapshot(eventId: eventId) }
+            snapshotRequestTask = requestTask
+            defer { snapshotRequestTask = nil }
+            let snapshot = try await requestTask.value
+            cachedSnapshot = snapshot
+            cachedSnapshotAt = now
+            rateLimitedUntil = nil
+            return snapshot
+        } catch BridgeError.http(429, _) {
+            let until = now.addingTimeInterval(rateLimitBackoff)
+            rateLimitedUntil = until
+            onStatus(.rateLimited(seconds: Int(rateLimitBackoff)))
+            if let cachedSnapshot { return cachedSnapshot }
+            throw BridgeError.rateLimited(until: until)
+        } catch {
+            if let cachedSnapshot { return cachedSnapshot }
+            throw error
         }
     }
 
@@ -225,7 +285,7 @@ final class Bridge {
         window.addEventListener("resize", fitAll);
         fitAll();
         refresh();
-        setInterval(refresh, 1000);
+        setInterval(refresh, 2500);
         </script>
         </body>
         </html>
@@ -272,7 +332,7 @@ final class Bridge {
           } catch (_) {}
         };
         refresh();
-        setInterval(refresh, 1000);
+        setInterval(refresh, 2500);
         </script>
         </body>
         </html>
@@ -405,4 +465,5 @@ enum BridgeRuntimeStatus {
     case commandSucceeded(String)
     case commandFailed(String)
     case redirectListening(port: Int)
+    case rateLimited(seconds: Int)
 }

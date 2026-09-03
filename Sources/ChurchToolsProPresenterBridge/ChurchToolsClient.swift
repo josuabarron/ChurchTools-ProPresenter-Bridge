@@ -406,6 +406,7 @@ enum BridgeError: LocalizedError {
     case noMatchingEvent
     case invalidAgendaPosition(Int, maximum: Int)
     case agendaTitleNotFound(String)
+    case rateLimited(until: Date)
 
     var errorDescription: String? {
         switch self {
@@ -416,6 +417,15 @@ enum BridgeError: LocalizedError {
         case .invalidAgendaPosition(let position, let maximum):
             return "Agenda-Position \(position) ist ungültig. Erlaubt sind 0 bis \(maximum)."
         case .agendaTitleNotFound(let title): return "Kein Agenda-Eintrag mit dem Titel „\(title)“ gefunden."
+        case .rateLimited(let until):
+            return "ChurchTools drosselt die Anfragen. Neuer Versuch ab \(Self.rateLimitFormatter.string(from: until))."
         }
     }
+
+    private static let rateLimitFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 }

@@ -161,6 +161,9 @@ final class BridgeController: ObservableObject {
             commandStatus = "Fehler: \(message)"; addLog("ChurchTools-Send fehlgeschlagen: \(message)")
         case .redirectListening(let port):
             redirectStatus = "http://127.0.0.1:\(port)/live"; addLog("Lokale Live-Agenda-URL bereit: \(redirectStatus)")
+        case .rateLimited(let seconds):
+            churchToolsStatus = "Gedrosselt · Cache aktiv"
+            addLog("ChurchTools HTTP 429: warte \(seconds)s und verwende den letzten Live-Stand")
         }
     }
 
