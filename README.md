@@ -8,13 +8,21 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 
 ![ChurchTools ProPresenter Bridge](docs/app-screenshot.png)
 
+Local display views:
+
+![Live Agenda Line view](docs/strip-screenshot.png)
+
+![Live Agenda Notes view](docs/notes-screenshot.png)
+
 ## Features
 
 - Virtual CoreMIDI destination named `ChurchTools Bridge`
 - Configurable MIDI sends for previous, next, agenda position, or agenda title
 - Automatic selection of the next matching ChurchTools event, with manual choice when multiple matching agendas exist on the same day
 - Optional restriction to locked agendas
-- Fixed localhost URLs for the current Live Agenda, compact strip view, and notes view
+- Copy buttons for the original ChurchTools Live Agenda, compact line view, and notes view
+- Adjustable notes font size for ProPresenter/browser embeds
+- Local cache and backoff protection to reduce ChurchTools API requests
 - Login token stored in macOS Keychain
 - Automatic bridge startup whenever the app opens and optional launch at login
 - Copyable diagnostic log hidden behind a triple click between Restart and Quit
@@ -34,9 +42,11 @@ ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 4. Configure the MIDI sends if needed.
 5. Click **Verbindung prüfen**, then use the restart icon.
 
-Settings are saved automatically. The login token is stored in Keychain and is never written to the repository or diagnostic log.
+Settings are saved automatically. The login token is stored in the macOS Keychain and is never written to the repository or diagnostic log. On first use, macOS may ask for the user's login password to allow `ChurchTools Bridge` to read the saved token. Choose **Always Allow** if the app should start without repeated Keychain prompts.
 
 The **App bei Anmeldung öffnen** switch uses the native macOS login-item service. The bridge itself starts whenever the app opens; the switch only controls whether macOS opens the app after login.
+
+Use the `CT`, line, and notes buttons in the `URLs` row to copy the three local URLs without exposing the full address in the interface.
 
 ## ProPresenter MIDI
 
@@ -44,7 +54,7 @@ The **App bei Anmeldung öffnen** switch uses the native macOS login-item servic
 | --- | ---: |
 | `zurück` | 60 |
 | `vor` | 61 |
-| `3` | 62 |
+| `3` or any agenda title | 62 |
 
 The send target decides what happens:
 
@@ -65,7 +75,13 @@ http://127.0.0.1:8765/live/notes
 
 The server binds to localhost only and disables caching. `/live` redirects to the ChurchTools Live Agenda and includes the configured login token, so use it only on a trusted Mac with a tightly restricted ChurchTools function user.
 
-`/live/strip` renders a compact local view with the current and next agenda item. `/live/notes` renders only the notes for the current item. Both update without a full page reload.
+`/live/strip` renders a compact local line view with the current and next agenda item. `/live/notes` renders only the notes for the current item. Both update without a full page reload and keep rendering the last known state if ChurchTools is temporarily unavailable.
+
+## ChurchTools Rate Limits
+
+The local display views are designed for ProPresenter browser sources. They poll the local bridge, not ChurchTools directly. The bridge caches the latest live agenda snapshot, shares simultaneous local requests, and waits before retrying if ChurchTools responds with `429 Too Many Requests`.
+
+If rate limiting happens, the menu status changes to `Gedrosselt · Cache aktiv` and the diagnostic log records the backoff. The display views continue using the most recent cached agenda state.
 
 ## Build
 
@@ -90,7 +106,7 @@ The public ChurchTools REST API supplies events and agendas. Live position is co
 ## Security
 
 - No ChurchTools URL, token, user ID, event ID, or personal data is included in this repository.
-- Secrets are stored in macOS Keychain with device-only accessibility.
+- Secrets are stored in the macOS Keychain with device-only accessibility. Access is protected by macOS and may require approval with the user's login password.
 - The redirect server only listens on `127.0.0.1`.
 - Use a function user with the smallest possible set of ChurchTools permissions.
 
