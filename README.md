@@ -6,7 +6,7 @@ A native macOS menu bar app that controls a ChurchTools Live Agenda from ProPres
 ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live Agenda
 ```
 
-![ChurchTools ProPresenter Bridge](docs/app-screenshot.png)
+![ChurchTools ProPresenter Bridge](docs/app-settings-screenshot.png)
 
 Local display views:
 
