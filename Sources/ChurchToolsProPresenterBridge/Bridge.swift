@@ -377,6 +377,24 @@ final class Bridge {
         <h2>ProPresenter</h2>
         <p>Sende MIDI Note On auf Kanal 1 mit Velocity groesser 0 an das virtuelle CoreMIDI-Geraet <code>ChurchTools Bridge</code>. Nach dem ersten Start der Bridge muss ProPresenter eventuell neu gestartet werden, damit der MIDI-Port sichtbar wird.</p>
 
+        <h2>Windows: loopMIDI installieren und einrichten</h2>
+        <p>Für die MIDI-Verbindung zwischen ProPresenter und der Windows-Bridge muss <strong>loopMIDI separat installiert</strong> werden. Es stellt das virtuelle MIDI-Kabel bereit und ist nicht in der Bridge enthalten. Unter macOS wird loopMIDI nicht benötigt.</p>
+        <ol>
+        <li><strong>Installieren:</strong> loopMIDI von der <a href="https://www.tobias-erichsen.de/software/loopmidi.html">offiziellen Downloadseite</a> herunterladen, das Installationsprogramm ausführen und loopMIDI starten.</li>
+        <li><strong>Port erstellen:</strong> In loopMIDI einen neuen Port mit dem Namen <code>ChurchTools Bridge</code> anlegen. loopMIDI während des Betriebs laufen lassen; das Schließen des Konfigurationsfensters minimiert es in den Infobereich.</li>
+        <li><strong>Windows-Bridge einrichten:</strong> ChurchTools API-URL, Login-Token und User-ID eintragen. Auf <strong>Ports suchen</strong> klicken und unter <strong>MIDI-Eingang</strong> den Port <code>ChurchTools Bridge</code> auswählen. MIDI-Kanal zunächst auf <strong>1</strong> lassen und <strong>Speichern &amp; Start / Neustart</strong> drücken. Bei mehreren passenden Events die gewünschte Agenda auswählen.</li>
+        <li><strong>ProPresenter verbinden:</strong> In den MIDI-Einstellungen von ProPresenter <code>ChurchTools Bridge</code> als MIDI-Ausgang auswählen. Falls der Port nicht erscheint, ProPresenter nach dem Erstellen des Ports neu starten.</li>
+        <li><strong>MIDI-Sends testen:</strong> In ProPresenter eine MIDI-Note-On-Aktion auf Kanal <strong>1</strong> mit Velocity größer als <strong>0</strong> einrichten, beispielsweise 100. Standardmäßig schaltet Note <strong>60</strong> zurück, Note <strong>61</strong> vor und Note <strong>62</strong> zu Agenda-Position 3. Die numerischen Notenwerte verwenden und zunächst an einem Test-Event prüfen. Bei geänderter Zuordnung oder geändertem Kanal müssen ProPresenter und Bridge übereinstimmen.</li>
+        <li><strong>Autostart:</strong> Über das loopMIDI-Symbol im Windows-Infobereich dessen Autostart aktivieren. In der Bridge bei Bedarf zusätzlich <strong>App bei Windows-Anmeldung öffnen</strong> einschalten. Beide Programme müssen laufen.</li>
+        </ol>
+        <h2>Wenn keine MIDI-Befehle ankommen</h2>
+        <ul>
+        <li>Prüfen, ob loopMIDI läuft und der Port vorhanden ist. In der Bridge erneut <strong>Ports suchen</strong>, den Port auswählen und <strong>Speichern &amp; Start / Neustart</strong> drücken.</li>
+        <li>ProPresenter-Ausgang und Bridge-Eingang müssen denselben Port verwenden. MIDI-Kanal, Notennummer und Velocity prüfen; Note Off und Velocity 0 lösen keinen Befehl aus.</li>
+        <li>Prüfen, ob die Bridge verbunden ist und ein passendes ChurchTools-Event ausgewählt wurde.</li>
+        <li>Wurde loopMIDI beendet oder der Port neu angelegt, loopMIDI zuerst starten und danach die Bridge neu starten. Die Bridge verbindet einen verlorenen MIDI-Port noch nicht automatisch neu.</li>
+        </ul>
+
         <h2>Sends</h2>
         <p>Ein Send besteht aus Ziel und MIDI-Note. <code>vor</code> oder <code>weiter</code> geht vorwaerts, <code>zurueck</code> geht zurueck, eine Zahl springt zur Position, jeder andere Text sucht einen Agenda-Titel.</p>
 

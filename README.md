@@ -14,6 +14,12 @@ Lokale Anzeige-Ansichten:
 
 ![Live-Agenda Notes-Ansicht](docs/notes-screenshot.png)
 
+## Windows
+
+**Status: Ungetestet (untested). Die Windows-Version wurde noch nicht im praktischen Betrieb mit Windows, loopMIDI und ProPresenter getestet. Ein erfolgreicher Build ist keine Bestätigung der Funktionsfähigkeit im Live-Betrieb.**
+
+Eine Windows-Portierung mit MIDI-Eingang über loopMIDI, Desktop-Oberfläche und EXE-Build liegt unter [`windows`](windows/README.md). Anleitung, Build und Windows-Testcheckliste stehen dort. Der echte Windows-/ProPresenter-Test steht noch aus.
+
 ## Features
 
 - Virtuelles CoreMIDI-Ziel mit dem Namen `ChurchTools Bridge`
