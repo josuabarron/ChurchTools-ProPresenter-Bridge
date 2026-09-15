@@ -50,34 +50,3 @@ Die CI (`.github/workflows/windows-build.yml`, `release.yml`) und
 | `test_tokenspeicher.py` | 10 | 0,2 s | DPAPI-Ablage, Meldungen im Aufbau |
 | `test_uninstall.py` | 13 | 0,2 s | Deinstallation und Autostart-Pfad |
 | `test_not_elevated.py` | 12 | 0,2 s | Start aus erhöhtem Prozess |
-
-## Ein übersprungener Test
-
-`test_verknuepfung_wird_nicht_verfolgt` legt eine symbolische Verknüpfung an
-und prüft, dass ein Bericht darüber nicht hindurchschreibt. Windows erlaubt das
-Anlegen ohne Entwicklermodus oder erhöhte Rechte nicht; der Test überspringt
-sich dann selbst. Auf einem Rechner mit dieser Berechtigung läuft er mit.
-
-## Bekannte Schwächen
-
-- `test_ui.py` verbraucht mit rund 21 von 24 Sekunden fast die ganze Laufzeit.
-  Grund: `DebugModus` und `PortAkkordeon` erben von `Fenster`, dessen 26 Tests
-  dadurch dreimal laufen (26 × 3 = 78 der 93 Tests). Beide Unterklassen
-  prüfen nur ihren eigenen Zusatz. Wer die Laufzeit senken will, zieht die
-  geerbten Tests aus den Unterklassen heraus.
-- Einige Tests in `test_ui.py` schreiben die Anordnung fest (Reihenfolge der
-  Rahmen, Position von Note und Play-Knopf). Das ist gewollt – die Anordnung
-  war der Fehler – kostet aber bei jeder Umgestaltung Arbeit.
-- `test_verstecktes_menue_enthaelt_port_und_kanal` enthält einen toten Zweig
-  (`... if False else ...`). Funktioniert, gehört aber aufgeräumt.
-- Für die macOS-Fassung gibt es keine Tests. Die Prüfungen aus
-  `test_client_haertung.py` wurden gegen den Swift-Code von Hand abgeglichen.
-
-## Wenn ein Fehler auftritt
-
-Der Test gehört dazu. Die Dateien sind nach Fehlern sortiert, nicht nach
-Modulen – `test_tokenspeicher.py` enthält den Fall, dass zusätzliche Entropie
-einen vorhandenen Token unlesbar machte, `test_elevated.py` den Fall, dass ein
-erhöht gestartetes loopMIDI sich nicht beenden lässt. Jede Datei nennt in
-ihrem Kopf den Anlass. Ein neuer Test gehört in die Datei, deren Gegenstand er
-trifft; nur wenn es keinen gibt, kommt eine neue Datei dazu.
