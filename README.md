@@ -35,7 +35,7 @@ Der Port muss vom System bereitgestellt werden – beide Systeme können das nic
 
 **Windows** braucht ein Hilfsprogramm. Die Bridge nutzt [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), trägt den Port-Namen selbst in die Registry ein, startet loopMIDI neu und wartet, bis WinMM den Port sieht – die loopMIDI-Oberfläche muss nicht geöffnet werden. Alternativ lässt sich ein bereits vorhandenes MIDI-Gerät verwenden.
 
-loopMIDI wird **nicht mitgeliefert** (Weitergabe nicht gestattet); der Installer holt es über winget vom Hersteller. Wer die Bridge gewerblich einsetzt, klärt die Nutzung vorher mit dem Hersteller.
+loopMIDI wird **nicht mitgeliefert** – der Installer holt es über winget direkt vom Hersteller. Es gilt die Lizenz von Tobias Erichsen: freie Nutzung für *„private, non-commercial use"*, jede Weitergabe ist ohne schriftliche Genehmigung untersagt. Für eine Gemeinde ist die Nutzung damit gedeckt; wer die Bridge gewerblich einsetzt, muss das vorher mit dem Hersteller klären.
 
 ## Lokale Anzeige-Ansichten
 
@@ -70,14 +70,13 @@ Der Server hört ausschließlich auf `localhost` und deaktiviert Browser-Caching
 
 ## Einrichtung
 
-1. Einstellungen öffnen (unter Windows das versteckte Menü: dreimal zwischen **Hilfe** und **Beenden** klicken).
+1. Einstellungen öffnen.
 2. API-URL eintragen, zum Beispiel `https://example.church.tools/api`.
 3. Login-Token und ChurchTools-User-ID eintragen.
 4. Bei Bedarf die MIDI-Sends anpassen.
-5. Übernehmen. Unter Windows: **MIDI-Port jetzt einrichten** drücken, falls der Port fehlt.
+5. Übernehmen.
 6. In ProPresenter denselben Namen als MIDI-Ausgang und die Noten als Aktionen anlegen.
 
-Einstellungen werden automatisch gespeichert. Der Login-Token liegt im macOS-Schlüsselbund bzw. unter Windows in `%LOCALAPPDATA%\ChurchToolsProPresenterBridge\token.dpapi` und niemals im Repository oder Diagnose-Log. Unter Windows fragt beim ersten Zugriff nichts nach; das DPAPI-Schutzprofil bindet die Datei an den Benutzer, beim Kopieren auf einen anderen Rechner muss der Token neu eingegeben werden.
 
 ## Umsetzung
 
@@ -89,6 +88,10 @@ Events und Agenden kommen aus der öffentlichen ChurchTools-REST-API. Die Live-P
 - Zugangsdaten liegen im macOS-Schlüsselbund mit gerätegebundener Verfügbarkeit bzw. unter Windows DPAPI-verschlüsselt; der Zugriff ist durch das Betriebssystem geschützt.
 - Der lokale Server hört ausschließlich auf `127.0.0.1`.
 - Verwende für den Login-Token einen Funktionsbenutzer mit möglichst wenigen ChurchTools-Rechten.
+
+## Referenzen
+
+- [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) – Tobias Erichsen; wird **nicht** mitgeliefert, sondern zur Laufzeit vom Hersteller installiert
 
 ## Lizenz
 
