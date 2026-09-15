@@ -15,19 +15,6 @@ Das Repository enthält **zwei eigenständige Fassungen** derselben App, je in e
 
 Beide sprechen dieselbe ChurchTools-API und dieselben MIDI-Befehle. Die Einrichtung unterscheidet sich, weil die Systeme verschiedene MIDI-Unterbauten haben.
 
-## Releases
-
-Beide Fassungen entstehen automatisch: ein Tag `v*` löst den Workflow [Build und Release](.github/workflows/release.yml) aus, der die Windows-EXE samt Installer und die macOS-App baut und an das Release hängt.
-
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
-
-Die Versionsnummer steht in [`VERSION`](VERSION) im Wurzelverzeichnis und wird beim Bauen in beide Erzeugnisse geschrieben (Info.plist der Mac-App, AppVersion des Installers). Sie ist bewusst nicht aus dem Tag abgeleitet, damit ein Testbau mit abweichendem Tag keine falsche Nummer erzeugt.
-
-Zum Prüfen ohne Release: den Workflow **Release** von Hand starten – er baut beide Seiten, legt aber nichts an.
-
 ## Wie das MIDI ankommt
 
 ProPresenter sendet MIDI-Noten. Die Bridge lauscht auf einem virtuellen MIDI-Eingang namens `ChurchTools Bridge` und übersetzt jede Note in eine Aktion der Live-Agenda.
@@ -49,8 +36,6 @@ Der Port muss vom System bereitgestellt werden – beide Systeme können das nic
 **Windows** braucht ein Hilfsprogramm. Die Bridge nutzt [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), trägt den Port-Namen selbst in die Registry ein, startet loopMIDI neu und wartet, bis WinMM den Port sieht – die loopMIDI-Oberfläche muss nicht geöffnet werden. Alternativ lässt sich ein bereits vorhandenes MIDI-Gerät verwenden.
 
 loopMIDI wird **nicht mitgeliefert** (Weitergabe nicht gestattet); der Installer holt es über winget vom Hersteller. Wer die Bridge gewerblich einsetzt, klärt die Nutzung vorher mit dem Hersteller.
-
-Windows 11 könnte virtuelle Ports auch selbst anlegen (Windows MIDI Services), aber das Feature ist auf ausgelieferten Rechnern noch nicht freigeschaltet. Sobald Microsoft es ausrollt, kann ein zweiter Weg daneben gebaut werden – die Port-Erstellung ist in `windows/loopmidi.py` gekapselt.
 
 ## Lokale Anzeige-Ansichten
 
@@ -74,12 +59,7 @@ Der Server hört ausschließlich auf `localhost` und deaktiviert Browser-Caching
 - Automatische Auswahl des nächsten passenden ChurchTools-Events
 - Manuelle Event-Auswahl, wenn an einem Tag mehrere passende Agenden vorhanden sind
 - Optionale Beschränkung auf gesperrte Agenden
-- Kopier-Buttons für Live-Agenda, Line-Ansicht und Notes-Ansicht
-- Einstellbare Schriftgröße für die Notes-Ansicht
-- Lokaler Cache und Backoff-Schutz gegen zu viele ChurchTools-Anfragen
 - Login-Token im macOS-Schlüsselbund bzw. unter Windows DPAPI-verschlüsselt
-- Autostart beim Anmelden
-- Kopierbares Diagnose-Log, in einem versteckten Menü
 
 ## Voraussetzungen
 
