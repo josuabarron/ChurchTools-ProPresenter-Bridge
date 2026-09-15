@@ -1,104 +1,113 @@
 # ChurchTools ProPresenter Bridge
 
-Eine native macOS-Menüleisten-App, die die ChurchTools Live-Agenda per MIDI aus ProPresenter steuert.
+Eine Bridge, die die ChurchTools Live-Agenda per MIDI aus ProPresenter steuert. Für macOS und Windows.
 
 ```text
 ProPresenter MIDI -> ChurchTools Bridge -> ChurchTools Live-Agenda
 ```
 
-![ChurchTools ProPresenter Bridge](docs/app-settings-screenshot.png)
+Das Repository enthält **zwei eigenständige Fassungen** derselben App, je in einem eigenen Ordner:
 
-Lokale Anzeige-Ansichten:
+| Ordner | System | Umsetzung | Bauen |
+| --- | --- | --- | --- |
+| [`mac`](mac) | macOS 13+ | Swift/SwiftUI-Menüleisten-App | `mac/scripts/build-app.sh` |
+| [`windows`](windows) | Windows 10/11 x64 | Python/Tk, EXE + Installer | `windows/build.ps1`, `windows/installer/build-installer.ps1` |
 
-![Live-Agenda Line-Ansicht](docs/strip-screenshot.png)
+Beide sprechen dieselbe ChurchTools-API und dieselben MIDI-Befehle. Die Einrichtung unterscheidet sich, weil die Systeme verschiedene MIDI-Unterbauten haben.
 
-![Live-Agenda Notes-Ansicht](docs/notes-screenshot.png)
+## Releases
 
-## Windows
+Beide Fassungen entstehen automatisch: ein Tag `v*` löst den Workflow [Build und Release](.github/workflows/release.yml) aus, der die Windows-EXE samt Installer und die macOS-App baut und an das Release hängt.
 
-**Status: Ungetestet (untested). Die Windows-Version wurde noch nicht im praktischen Betrieb mit Windows, loopMIDI und ProPresenter getestet. Ein erfolgreicher Build ist keine Bestätigung der Funktionsfähigkeit im Live-Betrieb.**
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
 
-Eine Windows-Portierung mit MIDI-Eingang über loopMIDI, Desktop-Oberfläche und EXE-Build liegt unter [`windows`](windows/README.md). Anleitung, Build und Windows-Testcheckliste stehen dort. Der echte Windows-/ProPresenter-Test steht noch aus.
+Die Versionsnummer steht in [`VERSION`](VERSION) im Wurzelverzeichnis und wird beim Bauen in beide Erzeugnisse geschrieben (Info.plist der Mac-App, AppVersion des Installers). Sie ist bewusst nicht aus dem Tag abgeleitet, damit ein Testbau mit abweichendem Tag keine falsche Nummer erzeugt.
+
+Zum Prüfen ohne Release: den Workflow **Release** von Hand starten – er baut beide Seiten, legt aber nichts an.
+
+## Wie das MIDI ankommt
+
+ProPresenter sendet MIDI-Noten. Die Bridge lauscht auf einem virtuellen MIDI-Eingang namens `ChurchTools Bridge` und übersetzt jede Note in eine Aktion der Live-Agenda.
+
+| Send | Standard-Note | Wirkung |
+| --- | ---: | --- |
+| `zurück` | 60 | einen Agenda-Punkt zurück |
+| `vor` | 61 | einen Agenda-Punkt vor |
+| `3` oder ein Agenda-Titel | 62 | Sprung zu dieser Position bzw. zum gleichnamigen Titel |
+
+Die Sends sind in beiden Fassungen frei konfigurierbar: links das Ziel, rechts die MIDI-Note. Gesendet wird auf **Kanal 1** mit **Velocity > 0**; Note Off und Velocity 0 lösen nichts aus.
+
+## Virtueller MIDI-Port
+
+Der Port muss vom System bereitgestellt werden – beide Systeme können das nicht von Haus aus.
+
+**macOS** bringt CoreMIDI mit: die App legt das virtuelle Ziel selbst an, es ist sofort da.
+
+**Windows** braucht ein Hilfsprogramm. Die Bridge nutzt [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), trägt den Port-Namen selbst in die Registry ein, startet loopMIDI neu und wartet, bis WinMM den Port sieht – die loopMIDI-Oberfläche muss nicht geöffnet werden. Alternativ lässt sich ein bereits vorhandenes MIDI-Gerät verwenden.
+
+loopMIDI wird **nicht mitgeliefert** (Weitergabe nicht gestattet); der Installer holt es über winget vom Hersteller. Wer die Bridge gewerblich einsetzt, klärt die Nutzung vorher mit dem Hersteller.
+
+Windows 11 könnte virtuelle Ports auch selbst anlegen (Windows MIDI Services), aber das Feature ist auf ausgelieferten Rechnern noch nicht freigeschaltet. Sobald Microsoft es ausrollt, kann ein zweiter Weg daneben gebaut werden – die Port-Erstellung ist in `windows/loopmidi.py` gekapselt.
+
+## Lokale Anzeige-Ansichten
+
+Beide Fassungen betreiben einen lokalen Server auf `127.0.0.1:8765`, dessen Ansichten für ProPresenter-Browser-Sources gedacht sind:
+
+```text
+http://127.0.0.1:8765/live          -> ChurchTools Live-Agenda (Weiterleitung)
+http://127.0.0.1:8765/live/strip    -> kompakte Line-Ansicht
+http://127.0.0.1:8765/live/notes    -> nur die Notizen des aktuellen Punktes
+```
+
+Der Server hört ausschließlich auf `localhost` und deaktiviert Browser-Caching. `/live` leitet zur ChurchTools Live-Agenda weiter und enthält den konfigurierten Login-Token — nutze diese URL nur auf einem vertrauenswürdigen Rechner mit einem eng eingeschränkten ChurchTools-Funktionsbenutzer.
+
+`/live/strip` und `/live/notes` fragen die lokale Bridge ab, nicht ChurchTools direkt. Die Bridge cached den letzten Stand, bündelt gleichzeitige Anfragen und wartet bei HTTP 429 automatisch (60 Sekunden Backoff). Die Ansichten aktualisieren sich alle 2,5 Sekunden und zeigen den letzten bekannten Stand weiter an, wenn ChurchTools kurz nicht erreichbar ist.
 
 ## Features
 
-- Virtuelles CoreMIDI-Ziel mit dem Namen `ChurchTools Bridge`
+- Virtuelles MIDI-Ziel `ChurchTools Bridge`
 - Frei konfigurierbare MIDI-Sends für zurück, vor, Agenda-Position oder Agenda-Titel
+- MIDI-Sends einzeln manuell auslösbar
 - Automatische Auswahl des nächsten passenden ChurchTools-Events
 - Manuelle Event-Auswahl, wenn an einem Tag mehrere passende Agenden vorhanden sind
 - Optionale Beschränkung auf gesperrte Agenden
-- Kopier-Buttons für die originale ChurchTools Live-Agenda, die kompakte Line-Ansicht und die Notes-Ansicht
-- Einstellbare Schriftgröße für die Notes-Ansicht in ProPresenter oder Browser-Sources
-- Lokaler Cache und Backoff-Schutz gegen zu viele ChurchTools-API-Anfragen
-- Login-Token wird im macOS-Schlüsselbund gespeichert
-- Automatischer Bridge-Start beim Öffnen der App und optionaler App-Autostart bei macOS-Anmeldung
-- Kopierbares Diagnose-Log, versteckt hinter dreifachem Klick zwischen Restart und Beenden
+- Kopier-Buttons für Live-Agenda, Line-Ansicht und Notes-Ansicht
+- Einstellbare Schriftgröße für die Notes-Ansicht
+- Lokaler Cache und Backoff-Schutz gegen zu viele ChurchTools-Anfragen
+- Login-Token im macOS-Schlüsselbund bzw. unter Windows DPAPI-verschlüsselt
+- Autostart beim Anmelden
+- Kopierbares Diagnose-Log, in einem versteckten Menü
 
 ## Voraussetzungen
 
-- macOS 13 oder neuer
+- macOS 13 oder neuer **oder** Windows 10/11 x64
 - Eine ChurchTools-Instanz und ein Login-Token
 - ProPresenter mit MIDI-Unterstützung
 - Für unbeaufsichtigte Anzeigen wird ein eingeschränkter ChurchTools-Funktionsbenutzer empfohlen
 
 ## Einrichtung
 
-1. Öffne die App über das Menüleisten-Icon und klappe **Einstellungen** auf.
-2. Trage die API-URL ein, zum Beispiel `https://example.church.tools/api`.
-3. Trage Login-Token und ChurchTools-User-ID ein.
-4. Passe bei Bedarf die MIDI-Sends an.
-5. Klicke auf **Verbindung prüfen** und danach auf das Restart-Icon.
+1. Einstellungen öffnen (unter Windows das versteckte Menü: dreimal zwischen **Hilfe** und **Beenden** klicken).
+2. API-URL eintragen, zum Beispiel `https://example.church.tools/api`.
+3. Login-Token und ChurchTools-User-ID eintragen.
+4. Bei Bedarf die MIDI-Sends anpassen.
+5. Übernehmen. Unter Windows: **MIDI-Port jetzt einrichten** drücken, falls der Port fehlt.
+6. In ProPresenter denselben Namen als MIDI-Ausgang und die Noten als Aktionen anlegen.
 
-Einstellungen werden automatisch gespeichert. Der Login-Token wird im macOS-Schlüsselbund gespeichert und niemals in das Repository oder Diagnose-Log geschrieben. Beim ersten Zugriff kann macOS nach dem Benutzerpasswort fragen, damit `ChurchTools Bridge` den gespeicherten Token lesen darf. Wähle **Immer erlauben**, wenn die App ohne wiederholte Schlüsselbund-Abfragen starten soll.
+Einstellungen werden automatisch gespeichert. Der Login-Token liegt im macOS-Schlüsselbund bzw. unter Windows in `%LOCALAPPDATA%\ChurchToolsProPresenterBridge\token.dpapi` und niemals im Repository oder Diagnose-Log. Unter Windows fragt beim ersten Zugriff nichts nach; das DPAPI-Schutzprofil bindet die Datei an den Benutzer, beim Kopieren auf einen anderen Rechner muss der Token neu eingegeben werden.
 
-Der Schalter **App bei Anmeldung öffnen** nutzt den nativen macOS-Login-Item-Dienst. Die Bridge selbst startet beim Öffnen der App automatisch; der Schalter entscheidet nur, ob macOS die App nach der Anmeldung öffnet.
-
-Mit den Buttons `CT`, Line und Notes in der Zeile `URLs` kopierst du die drei lokalen URLs, ohne dass die vollständige Adresse dauerhaft in der Oberfläche steht.
-
-## ProPresenter MIDI
-
-| Send | Standard-Note |
-| --- | ---: |
-| `zurück` | 60 |
-| `vor` | 61 |
-| `3` oder ein Agenda-Titel | 62 |
-
-Das Send-Ziel entscheidet, was passiert:
-
-- `zurück`, `previous` oder `back` schaltet die Live-Agenda zurück.
-- `vor`, `weiter`, `next` oder `forward` schaltet die Live-Agenda vor.
-- Eine Zahl springt zu dieser Agenda-Position.
-- Jeder andere Text sucht in der aktuellen Agenda nach einem gleichnamigen Titel und springt dorthin.
-
-Sende MIDI-Note-On-Nachrichten auf Kanal 1 mit Velocity größer als 0. Starte ProPresenter neu, nachdem die Bridge ihren virtuellen MIDI-Port zum ersten Mal erstellt hat.
-
-## Stabile Live-Agenda-URLs
-
-```text
-http://127.0.0.1:8765/live
-http://127.0.0.1:8765/live/strip
-http://127.0.0.1:8765/live/notes
-```
-
-Der Server hört nur auf `localhost` und deaktiviert Browser-Caching. `/live` leitet zur ChurchTools Live-Agenda des aktuell gewählten Events weiter und enthält den konfigurierten Login-Token. Nutze diese URL deshalb nur auf einem vertrauenswürdigen Mac mit einem eng eingeschränkten ChurchTools-Funktionsbenutzer.
-
-`/live/strip` rendert eine kompakte lokale Line-Ansicht mit aktuellem und nächstem Agenda-Punkt. `/live/notes` rendert nur die Notizen des aktuellen Agenda-Punkts. Beide Ansichten aktualisieren sich ohne kompletten Seiten-Reload und zeigen den letzten bekannten Stand weiter an, wenn ChurchTools kurzzeitig nicht erreichbar ist.
-
-## ChurchTools Rate Limits
-
-Die lokalen Anzeige-Ansichten sind für ProPresenter-Browser-Sources gedacht. Sie fragen die lokale Bridge ab, nicht ChurchTools direkt. Die Bridge cached den letzten Live-Agenda-Stand, bündelt gleichzeitige lokale Requests und wartet automatisch, wenn ChurchTools mit `429 Too Many Requests` antwortet.
-
-Wenn Rate Limiting auftritt, wechselt der Menüstatus auf `Gedrosselt · Cache aktiv` und das Diagnose-Log protokolliert den Backoff. Die Anzeige-Ansichten nutzen währenddessen weiter den zuletzt gecachten Agenda-Stand.
-
-## Implementierung
+## Umsetzung
 
 Events und Agenden kommen aus der öffentlichen ChurchTools-REST-API. Die Live-Position wird über den Legacy-Endpunkt `churchservice/ajax` mit `loadAgendaLivePosition` und `saveAgendaLivePosition` gesteuert.
 
 ## Sicherheit
 
 - Dieses Repository enthält keine ChurchTools-URL, keine Tokens, keine User-IDs, keine Event-IDs und keine personenbezogenen Daten.
-- Zugangsdaten werden im macOS-Schlüsselbund mit gerätegebundener Verfügbarkeit gespeichert. Der Zugriff ist durch macOS geschützt und kann eine Freigabe mit dem Benutzerpasswort erfordern.
-- Der lokale Weiterleitungsserver hört ausschließlich auf `127.0.0.1`.
+- Zugangsdaten liegen im macOS-Schlüsselbund mit gerätegebundener Verfügbarkeit bzw. unter Windows DPAPI-verschlüsselt; der Zugriff ist durch das Betriebssystem geschützt.
+- Der lokale Server hört ausschließlich auf `127.0.0.1`.
 - Verwende für den Login-Token einen Funktionsbenutzer mit möglichst wenigen ChurchTools-Rechten.
 
 ## Lizenz
