@@ -1,20 +1,56 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
-struct ChurchToolsProPresenterBridgeApp: App {
-    @StateObject private var settings = AppSettings()
-    @StateObject private var controller = BridgeController()
+private struct ChurchToolsProPresenterBridgeMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.accessory)
+        app.run()
+        _ = delegate
+    }
+}
 
-    var body: some Scene {
-        MenuBarExtra {
-            BridgeMenuView().environmentObject(settings).environmentObject(controller)
-        } label: {
-            Image(systemName: "list.bullet.clipboard")
-                .accessibilityLabel("ChurchTools Bridge: \(controller.summary)")
-                .onAppear(perform: startBridgeAtLaunch)
+@MainActor
+private final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private let settings = AppSettings()
+    private let controller = BridgeController()
+    private let popover = NSPopover()
+    private var statusItem: NSStatusItem?
+    private var diagnosticsWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.statusItem = statusItem
+
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "list.bullet.clipboard", accessibilityDescription: "ChurchTools Bridge")
+            button.action = #selector(togglePopover(_:))
+            button.target = self
         }
-        .menuBarExtraStyle(.window)
+
+        let content = BridgeMenuView()
+            .environmentObject(settings)
+            .environmentObject(controller)
+            .environment(\.openDiagnosticsWindow, { [weak self] in self?.openDiagnosticsWindow() })
+        popover.contentViewController = NSHostingController(rootView: content)
+        popover.behavior = .transient
+        popover.delegate = self
+
+        startBridgeAtLaunch()
+    }
+
+    @objc private func togglePopover(_ sender: AnyObject?) {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
     }
 
     private func startBridgeAtLaunch() {
@@ -27,15 +63,47 @@ struct ChurchToolsProPresenterBridgeApp: App {
             // The settings UI shows validation errors when opened.
         }
     }
+
+    private func openDiagnosticsWindow() {
+        if let diagnosticsWindow {
+            diagnosticsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let content = DiagnosticsView()
+            .environmentObject(settings)
+            .environmentObject(controller)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: content))
+        window.title = "ChurchTools Bridge Diagnose"
+        window.setContentSize(NSSize(width: 560, height: 390))
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        diagnosticsWindow = window
+    }
+}
+
+private struct OpenDiagnosticsWindowKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+private extension EnvironmentValues {
+    var openDiagnosticsWindow: () -> Void {
+        get { self[OpenDiagnosticsWindowKey.self] }
+        set { self[OpenDiagnosticsWindowKey.self] = newValue }
+    }
 }
 
 private struct BridgeMenuView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var controller: BridgeController
+    @Environment(\.openDiagnosticsWindow) private var openDiagnosticsWindow
     @State private var token = ""
     @State private var message: String?
     @State private var showSettings = false
-    @State private var showDiagnostics = false
     @State private var didLoad = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -98,7 +166,6 @@ private struct BridgeMenuView: View {
             }
 
             if let message { Text(message).font(.caption2).foregroundStyle(.secondary) }
-            if showDiagnostics { diagnostics }
 
             Divider()
             HStack {
@@ -111,9 +178,7 @@ private struct BridgeMenuView: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 24)
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 3) {
-                        withAnimation { showDiagnostics.toggle() }
-                    }
+                    .onTapGesture(count: 3, perform: openDiagnosticsWindow)
                 Button("Beenden") { NSApplication.shared.terminate(nil) }
             }
         }
@@ -187,41 +252,6 @@ private struct BridgeMenuView: View {
             } label: { Label("Send hinzufügen", systemImage: "plus") }
             Text("Zahlen springen zu einer Position. Jeder andere Text sucht den gleichnamigen Agenda-Titel.")
                 .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private var diagnostics: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Divider()
-            Text("Diagnose & Server").font(.subheadline).fontWeight(.semibold)
-            // Abläufe von Hand auslösen – dieselben, die die Windows-Fassung im
-            // versteckten Menü anbietet. Was dort nur für Windows nötig ist
-            // (Ports suchen, MIDI-Port einrichten, Diagnose-Dialog), fehlt hier
-            // bewusst: auf dem Mac legt CoreMIDI den Port selbst an, und die
-            // Diagnose steht ohnehin offen auf diesem Bildschirm.
-            Text("Abläufe von Hand auslösen").font(.caption).foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 8) {
-                Button("Verbindung prüfen") { testConnection() }
-                Button("CT-URL kopieren") { copyServerURL(.churchTools) }
-                Button("Line-URL kopieren") { copyServerURL(.strip) }
-                Button("Notes-URL kopieren") { copyServerURL(.notes) }
-                Button("Notizen anzeigen") { openNotes() }
-                Button("Diagnose-Log kopieren") { copyLog() }
-                    .disabled(controller.logEntries.isEmpty)
-                Button("Log leeren") { controller.clearLog() }
-                    .disabled(controller.logEntries.isEmpty)
-                Button("Hilfe öffnen") { openHelp() }
-                Button("Bridge neu starten") { startBridge() }
-            }
-            .disabled(!didLoad)
-            LabeledField("Localhost-Port") {
-                TextField("8765", value: $settings.redirectPort, format: .number.grouping(.never))
-            }
-            ScrollView {
-                Text(controller.logText.isEmpty ? "Noch keine Einträge" : controller.logText)
-                    .font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(height: 110)
         }
     }
 
@@ -324,6 +354,111 @@ private struct BridgeMenuView: View {
             message = nil
         } catch {
             message = error.localizedDescription
+        }
+    }
+}
+
+private struct DiagnosticsView: View {
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var controller: BridgeController
+    @State private var token = ""
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Diagnose & Server").font(.headline)
+            Text("Abläufe von Hand auslösen").font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 8) {
+                Button("Verbindung prüfen") { testConnection() }
+                Button("CT-URL kopieren") { copyServerURL(.churchTools) }
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button("Line-URL kopieren") { copyServerURL(.strip) }
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button("Notes-URL kopieren") { copyServerURL(.notes) }
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button("Notizen anzeigen") { openNotes() }
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button("Diagnose-Log kopieren") { copyLog() }
+                    .disabled(controller.logEntries.isEmpty)
+                Button("Log leeren") { controller.clearLog() }
+                    .disabled(controller.logEntries.isEmpty)
+                Button("Hilfe öffnen") { openHelp() }
+                    .disabled(!controller.redirectStatus.hasPrefix("http"))
+                Button("Bridge neu starten") { startBridge() }
+            }
+            LabeledField("Localhost-Port") {
+                TextField("8765", value: $settings.redirectPort, format: .number.grouping(.never))
+            }
+            ScrollView {
+                Text(controller.logText.isEmpty ? "Noch keine Einträge" : controller.logText)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .frame(minHeight: 140)
+            .background(Color(NSColor.textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            if let message {
+                Text(message).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 520, minHeight: 360)
+        .onAppear { token = settings.loadToken() }
+    }
+
+    private func testConnection() {
+        do {
+            try settings.save(token: token)
+            message = nil
+            controller.testConnection(config: settings.makeConfig(token: token))
+        } catch { message = error.localizedDescription }
+    }
+
+    private func startBridge() {
+        do {
+            try settings.save(token: token)
+            message = nil
+            controller.start(config: settings.makeConfig(token: token))
+        } catch { message = error.localizedDescription }
+    }
+
+    private func copyLog() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(controller.logText, forType: .string)
+        message = "Log kopiert"
+    }
+
+    private func copyServerURL(_ kind: LocalURLKind) {
+        guard let url = localURL(kind) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url, forType: .string)
+        message = "\(kind.label) kopiert"
+    }
+
+    private func openHelp() {
+        if let url = localURL(.help).flatMap(URL.init(string:)) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openNotes() {
+        if let url = localURL(.notes).flatMap(URL.init(string:)) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func localURL(_ kind: LocalURLKind) -> String? {
+        guard controller.redirectStatus.hasPrefix("http") else { return nil }
+        let root = controller.redirectStatus.hasSuffix("/live")
+            ? String(controller.redirectStatus.dropLast(5))
+            : controller.redirectStatus
+        switch kind {
+        case .churchTools: return controller.redirectStatus
+        case .strip: return "\(controller.redirectStatus)/strip"
+        case .notes: return "\(controller.redirectStatus)/notes"
+        case .help: return "\(root)/help"
         }
     }
 }
