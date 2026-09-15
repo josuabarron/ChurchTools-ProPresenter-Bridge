@@ -3,27 +3,82 @@
 <title>ChurchTools Bridge · Windows-Hilfe</title>
 <style>body{margin:0;background:#111214;color:#f4f5f6;font:16px/1.6 "Segoe UI",sans-serif}
 main{max-width:880px;margin:auto;padding:32px 24px 64px}h1{line-height:1.2}h2{margin-top:32px;font-size:22px}
-li{margin:12px 0}a{color:#8fcaff}code{background:#292c30;padding:2px 5px;border-radius:4px}</style></head>
+li{margin:12px 0}a{color:#8fcaff}code{background:#292c30;padding:2px 5px;border-radius:4px}
+.hinweis{background:#1c2733;border-left:4px solid #8fcaff;padding:12px 16px;border-radius:4px}</style></head>
 <body><main><h1>ChurchTools Bridge · Windows-Hilfe</h1>
-<p>ProPresenter → loopMIDI → ChurchTools Bridge → ChurchTools Live-Agenda</p>
-<h2>Windows: loopMIDI installieren und einrichten</h2>
-<p>Für die MIDI-Verbindung zwischen ProPresenter und der Windows-Bridge muss <strong>loopMIDI separat installiert</strong> werden. Es stellt das virtuelle MIDI-Kabel bereit und ist nicht in der Bridge enthalten. Unter macOS wird loopMIDI nicht benötigt.</p>
+<p>ProPresenter → MIDI-Port der Bridge → ChurchTools Live-Agenda</p>
+
+<h2>Kurz gesagt</h2>
+<p>Die Bridge richtet den MIDI-Port <strong>selbst ein</strong>. Dafür ist ein Klick auf
+<strong>MIDI-Port jetzt einrichten</strong> nötig – alles Weitere erledigt die Bridge.
+Danach nur noch denselben Namen in ProPresenter als MIDI-Ausgang auswählen.</p>
+
+<h2>Eigener Port (Standard)</h2>
+<p>Der Bereich <strong>MIDI-Port</strong> klappt sich zusammen, sobald der Port steht; die Zeile daneben nennt ihn
+dann samt Zustand. Zum Nachsehen auf das Dreieck links daneben klicken.</p>
 <ol>
-<li><strong>Installieren:</strong> loopMIDI von der <a href="https://www.tobias-erichsen.de/software/loopmidi.html">offiziellen Downloadseite</a> herunterladen, das Installationsprogramm ausführen und loopMIDI starten.</li>
-<li><strong>Port erstellen:</strong> In loopMIDI einen neuen Port mit dem Namen <code>ChurchTools Bridge</code> anlegen. loopMIDI während des Betriebs laufen lassen; das Schließen des Konfigurationsfensters minimiert es in den Infobereich.</li>
-<li><strong>Windows-Bridge einrichten:</strong> ChurchTools API-URL, Login-Token und User-ID eintragen. Auf <strong>Ports suchen</strong> klicken und unter <strong>MIDI-Eingang</strong> den Port <code>ChurchTools Bridge</code> auswählen. MIDI-Kanal zunächst auf <strong>1</strong> lassen und <strong>Speichern &amp; Start / Neustart</strong> drücken. Bei mehreren passenden Events die gewünschte Agenda auswählen.</li>
-<li><strong>ProPresenter verbinden:</strong> In den MIDI-Einstellungen von ProPresenter <code>ChurchTools Bridge</code> als MIDI-Ausgang auswählen. Falls der Port nicht erscheint, ProPresenter nach dem Erstellen des Ports neu starten.</li>
-<li><strong>MIDI-Sends testen:</strong> In ProPresenter eine MIDI-Note-On-Aktion auf Kanal <strong>1</strong> mit Velocity größer als <strong>0</strong> einrichten, beispielsweise 100. Standardmäßig schaltet Note <strong>60</strong> zurück, Note <strong>61</strong> vor und Note <strong>62</strong> zu Agenda-Position 3. Die numerischen Notenwerte verwenden und zunächst an einem Test-Event prüfen. Bei geänderter Zuordnung oder geändertem Kanal müssen ProPresenter und Bridge übereinstimmen.</li>
-<li><strong>Autostart:</strong> Über das loopMIDI-Symbol im Windows-Infobereich dessen Autostart aktivieren. In der Bridge bei Bedarf zusätzlich <strong>App bei Windows-Anmeldung öffnen</strong> einschalten. Beide Programme müssen laufen.</li>
+<li><strong>Bridge starten.</strong> Der Radiobutton <em>Bridge legt den Port selbst an</em> ist voreingestellt.
+Der Name darunter ist der Name, den ProPresenter später sieht (höchstens 31 Zeichen, Vorgabe
+<code>ChurchTools Bridge</code>).</li>
+<li><strong>MIDI-Port jetzt einrichten</strong> drücken. Die Bridge erledigt der Reihe nach:
+loopMIDI installieren (falls nötig), den Port eintragen, loopMIDI neu starten, prüfen ob Windows den Port sieht.
+Der Verlauf steht im Fenster; Fehler werden im Klartext genannt.</li>
+<li><strong>Fertig.</strong> Wenn dort steht, dass der Port bereit ist, ist nichts weiter zu tun.</li>
+<li><strong>In ProPresenter:</strong> denselben Namen als MIDI-Ausgang wählen. Erscheint der Port nicht,
+ProPresenter neu starten.</li>
+<li><strong>MIDI-Sends testen:</strong> eine MIDI-Note-On-Aktion auf Kanal <strong>1</strong> mit Velocity größer als <strong>0</strong>
+einrichten, beispielsweise 100. Voreingestellt sind: Note <strong>60</strong> zurück, Note <strong>61</strong> vor,
+Note <strong>62</strong> zu Agenda-Position 3.</li>
+<li><strong>Sends ändern:</strong> unter <strong>MIDI-Sends</strong> je Zeile links das Ziel und rechts die MIDI-Note eintragen.
+<strong>&#10005;</strong> entfernt eine Zeile, <strong>Send hinzufügen</strong> hängt eine an (neue Note: erste freie ab 60).
+Mit <strong>⟳</strong> übernehmen.</li>
 </ol>
+
+<h2>Wenn der Klick auf „MIDI-Port jetzt einrichten“ nicht weiterhilft</h2>
+<ul>
+<li><strong>Diagnose</strong> drücken. Dort steht im Klartext, woran es liegt: ob das Hilfsprogramm installiert ist,
+ob es läuft, ob der Port eingetragen und sichtbar ist, und welche MIDI-Eingänge Windows überhaupt sieht.</li>
+<li><strong>„winget ist nicht verfügbar“:</strong> loopMIDI ist noch nicht installiert und Windows kann es nicht
+automatisch holen. loopMIDI von der
+<a href="https://www.tobias-erichsen.de/software/loopmidi.html">Herstellerseite</a> installieren,
+danach in der Bridge erneut auf <strong>MIDI-Port jetzt einrichten</strong> drücken.</li>
+<li><strong>Port bleibt unsichtbar:</strong> Prüfen, ob loopMIDI im Infobereich der Taskleiste (neben der Uhr)
+erscheint. Wenn nicht, hilft ein Neustart des Rechners, danach erneut einrichten.</li>
+<li><strong>Kein MIDI-Eingang überhaupt:</strong> Ein physisches MIDI-Gerät muss unter Windows erkannt sein,
+bevor die Bridge es verwenden kann.</li>
+</ul>
+
+<h2>Bereits vorhandenen Port verwenden</h2>
+<p>Für ein physisches MIDI-Gerät oder einen selbst angelegten Port.</p>
+<ol>
+<li>Den Radiobutton <strong>Bereits vorhandenen Port verwenden</strong> wählen.</li>
+<li><strong>Ports suchen</strong> drücken und den Eingang auswählen.</li>
+<li><strong>⟳</strong> („Speichern &amp; Neustart“) drücken.</li>
+<li>Denselben Port in ProPresenter als MIDI-Ausgang wählen.</li>
+</ol>
+
 <h2>Wenn keine MIDI-Befehle ankommen</h2>
 <ul>
-<li>Prüfen, ob loopMIDI läuft und der Port vorhanden ist. In der Bridge erneut <strong>Ports suchen</strong>, den Port auswählen und <strong>Speichern &amp; Start / Neustart</strong> drücken.</li>
-<li>ProPresenter-Ausgang und Bridge-Eingang müssen denselben Port verwenden. MIDI-Kanal, Notennummer und Velocity prüfen; Note Off und Velocity 0 lösen keinen Befehl aus.</li>
+<li>Prüfen, ob die Bridge <em>MIDI verbunden</em> meldet. Steht dort, dass der Port fehlt, <strong>MIDI-Port jetzt
+einrichten</strong> drücken.</li>
+<li>Prüfen, ob loopMIDI läuft (Infobereich der Taskleiste). Die Bridge startet es bei Bedarf mit, aber wenn
+es abgestürzt ist, hilft ein Neustart der Bridge.</li>
+<li>ProPresenter-Ausgang und MIDI-Kanal/Notennummer müssen mit der Bridge übereinstimmen. Die Bridge hört
+auf <strong>Kanal 1</strong>; ein anderer Kanal wird über das versteckte Menü eingestellt.
+Note Off und Velocity 0 lösen keinen Befehl aus.</li>
 <li>Prüfen, ob die Bridge verbunden ist und ein passendes ChurchTools-Event ausgewählt wurde.</li>
-<li>Wurde loopMIDI beendet oder der Port neu angelegt, loopMIDI zuerst starten und danach die Bridge neu starten. Die Bridge verbindet einen verlorenen MIDI-Port noch nicht automatisch neu.</li>
 </ul>
+
 <h2>Lokale Anzeige-Ansichten</h2>
-<p>Die Buttons <strong>CT-URL kopieren</strong>, <strong>Line-URL kopieren</strong> und <strong>Notes-URL kopieren</strong> kopieren die Adressen für ProPresenter-Browser-Sources. Die Bridge muss dafür gestartet sein.</p>
-<p>Minimieren lässt die Windows-Bridge weiterlaufen. Schließen beendet sie.</p>
+<p>Die Buttons <strong>CT-URL kopieren</strong>, <strong>Line-URL kopieren</strong> und <strong>Notes-URL kopieren</strong> kopieren
+die Adressen für ProPresenter-Browser-Sources. Die Bridge muss dafür gestartet sein.</p>
+<h2>Die Bridge im Infobereich</h2>
+<p>Die Bridge sitzt neben der Uhr. <strong>Grün</strong> heißt: sie läuft und empfängt MIDI. <strong>Grau</strong> heißt: sie ist gestoppt.</p>
+<ul>
+<li><strong>Links-Doppelklick</strong> auf das Symbol holt das Fenster zurück.</li>
+<li><strong>Rechtsklick</strong> öffnet das Menü mit <em>Fenster öffnen</em> und <em>Beenden</em>.</li>
+<li>Das <strong>X</strong> im Fenster legt die Bridge nur in den Infobereich – sie läuft weiter.</li>
+<li>Beendet wird sie über <strong>Beenden</strong> im Fenster oder im Symbolmenü.</li>
+<li>Ist kein Symbol zu sehen, rechts auf den Pfeil neben der Uhr klicken: dort lassen sich Symbole ein- und ausblenden.</li>
+</ul>
 </main></body></html>

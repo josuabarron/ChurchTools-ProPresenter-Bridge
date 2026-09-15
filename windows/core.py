@@ -80,8 +80,24 @@ class Client:
         self.agendas = {}
         self.backoff_until = 0
         self.cancelled = False
+        # Nach einem Fehler kurz nicht erneut fragen. Sonst feuern die drei
+        # Ansichten alle 2,5 s nach, obwohl ChurchTools nicht antwortet
+        # (gemessen: Antwortdauer Median 6,5 s / Spitze 9,2 s).
+        self.recent_failures = {}
+        self.failure_pause = 5.0
+        # self.lock schuetzt ChurchTools-Zustand (CSRF, Drosselung, Agenda,
+        # Positionsablauf). Es wird waehrend des Netzaufrufs gehalten - das ist
+        # gewollt, sonst laufen Abfragen ungebremst in ChurchTools' Drosselung.
         self.lock = threading.RLock()
+        # Nur der Cache hat einen eigenen, kurz gehaltenen Schuetzen. Sonst
+        # muessten die Ansichten warten, bis ein MIDI-Klick seinen Netzaufruf
+        # beendet hat (gemessen: +750 ms).
+        self.cache_lock = threading.Lock()
         self.cache = {}
+        # Je Event ein eigener Schuetze: so holt nur ein Thread wirklich nach,
+        # wenn drei Ansichten gleichzeitig dieselbe Agenda brauchen.
+        self.event_locks = {}
+        self.event_locks_lock = threading.Lock()
 
     def request(self, path, form=None):
         with self.lock:
@@ -162,26 +178,61 @@ class Client:
             new = resolve_position(target, current, items)
             if new != current:
                 self.request('', dict(func='saveAgendaLivePosition', event_id=event_id, pos_id=new, addseconds=0))
-                self.cache.pop(event_id, None)
+                with self.cache_lock:
+                    self.cache.pop(event_id, None)
+
+    def event_lock(self, event_id):
+        with self.event_locks_lock:
+            lock = self.event_locks.get(event_id)
+            if lock is None:
+                lock = self.event_locks[event_id] = threading.Lock()
+            return lock
 
     def snapshot(self, event_id):
-        with self.lock:
+        # Frischer Cache-Treffer zuerst und OHNE die globale Sperre: die Ansichten
+        # duerfen nicht darauf warten, dass ein MIDI-Klick sein Netz-IO beendet.
+        with self.cache_lock:
             cached = self.cache.get(event_id)
+        if cached and time.monotonic() - cached[0] < 3:
+            return cached[1]
+        # Nur ein Thread je Event holt wirklich nach. Die anderen warten hier
+        # und finden danach den frischen Cache vor.
+        with self.event_lock(event_id):
+            with self.cache_lock:
+                cached = self.cache.get(event_id)
             if cached and time.monotonic() - cached[0] < 3:
                 return cached[1]
-            try:
-                agenda = self.agenda(event_id)
-                items = [i for i in agenda['items'] if i.get('type') != 'header']
-                pos = self.position(event_id, agenda)
-                current = items[pos - 1] if 1 <= pos <= len(items) else {}
-                following = items[pos] if 0 <= pos < len(items) else {}
-                result = dict(current=title(current), next=title(following), notes=notes(current))
+            return self._refresh(event_id)
+
+    def _refresh(self, event_id):
+        # Frische Fehlermeldung? Dann die letzte bekannte Agenda liefern,
+        # ohne ChurchTools erneut zu belasten.
+        with self.cache_lock:
+            zuletzt_gescheitert = self.recent_failures.get(event_id, 0)
+        if time.monotonic() - zuletzt_gescheitert < self.failure_pause:
+            with self.cache_lock:
+                veraltet = self.cache.get(event_id)
+            if veraltet:
+                return veraltet[1]
+        try:
+            agenda = self.agenda(event_id)
+            items = [i for i in agenda['items'] if i.get('type') != 'header']
+            pos = self.position(event_id, agenda)
+            current = items[pos - 1] if 1 <= pos <= len(items) else {}
+            following = items[pos] if 0 <= pos < len(items) else {}
+            result = dict(current=title(current), next=title(following), notes=notes(current))
+            with self.cache_lock:
                 self.cache[event_id] = time.monotonic(), result
-                return result
-            except BridgeError:
-                if cached:
-                    return cached[1]
-                raise
+                self.recent_failures.pop(event_id, None)
+            return result
+        except BridgeError:
+            with self.cache_lock:
+                self.recent_failures[event_id] = time.monotonic()
+                veraltet = self.cache.get(event_id)
+            # Bei einem Fehler die letzte bekannte Agenda zeigen, sofern vorhanden.
+            if veraltet:
+                return veraltet[1]
+            raise
 
     def live_url(self, event_id):
         query = dict(q='churchservice/liveview', event_id=event_id, login_token=self.token)
