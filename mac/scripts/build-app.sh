@@ -29,7 +29,7 @@ rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources" "$DIST_DIR"
 cp "$PROJECT_DIR/.build/release/ChurchToolsProPresenterBridge" "$CONTENTS_DIR/MacOS/"
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
-cp "$PROJECT_DIR/LICENSE.md" "$CONTENTS_DIR/Resources/LICENSE.md"
+cp "$REPO_DIR/LICENSE.md" "$CONTENTS_DIR/Resources/LICENSE.md"
 
 # Version und Build-Nummer in den kopierten Plist schreiben.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$CONTENTS_DIR/Info.plist"
