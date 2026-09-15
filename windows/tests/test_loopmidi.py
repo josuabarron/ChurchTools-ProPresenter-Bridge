@@ -180,6 +180,7 @@ class StartUndStop(unittest.TestCase):
 
     def test_start_ruft_programm_auf(self):
         with patch.object(loopmidi, 'executable', return_value=r'C:\l\loopMIDI.exe'), \
+                patch.object(loopmidi, 'elevated', return_value=False), \
                 patch.object(loopmidi.subprocess, 'Popen') as gestartet:
             ok, _ = loopmidi.start()
         self.assertTrue(ok)
@@ -187,6 +188,7 @@ class StartUndStop(unittest.TestCase):
 
     def test_start_meldet_fehler(self):
         with patch.object(loopmidi, 'executable', return_value=r'C:\l\loopMIDI.exe'), \
+                patch.object(loopmidi, 'elevated', return_value=False), \
                 patch.object(loopmidi.subprocess, 'Popen', side_effect=OSError('gesperrt')):
             ok, message = loopmidi.start()
         self.assertFalse(ok)
@@ -224,6 +226,7 @@ class StartUndStop(unittest.TestCase):
     def test_restart_startet_neu(self):
         with patch.object(loopmidi, 'stop', return_value=(True, 'beendet')), \
                 patch.object(loopmidi, 'start', return_value=(True, 'gestartet')), \
+                patch.object(loopmidi, 'elevated', return_value=False), \
                 patch.object(loopmidi, 'running', return_value=True):
             ok, message = loopmidi.restart()
         self.assertTrue(ok)

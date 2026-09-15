@@ -170,6 +170,8 @@ class Fenster(unittest.TestCase):
             self.root.update_idletasks()
             self.root.update()
             noetig = self.root.winfo_reqheight()
+            if self.root.winfo_screenheight() < noetig:
+                self.skipTest(f'Test-Desktop ist zu niedrig: {self.root.winfo_screenheight()} px, benötigt {noetig} px')
             self.assertGreaterEqual(
                 self.root.winfo_height(), noetig,
                 f'{was}: Fenster {self.root.winfo_height()} px, Inhalt braucht {noetig} px')
@@ -198,6 +200,11 @@ class Fenster(unittest.TestCase):
         self.window.show_hidden(True)
         self.root.update_idletasks()
         self.root.update()
+        if self.root.winfo_screenheight() < self.root.winfo_reqheight():
+            self.skipTest(
+                f'Test-Desktop ist zu niedrig: {self.root.winfo_screenheight()} px, '
+                f'benötigt {self.root.winfo_reqheight()} px'
+            )
         unten_add = self.window.add_button.winfo_rooty()
         self.assertLessEqual(unten_add, self.window.hidden.winfo_rooty(),
                              'Log überdeckt den Hinzufügen-Knopf')
@@ -267,6 +274,11 @@ class Fenster(unittest.TestCase):
         """Der Log darf die unterste Send-Zeile nicht verdecken."""
         self.window.show_hidden(True)
         self.root.update()
+        if self.root.winfo_screenheight() < self.root.winfo_reqheight():
+            self.skipTest(
+                f'Test-Desktop ist zu niedrig: {self.root.winfo_screenheight()} px, '
+                f'benötigt {self.root.winfo_reqheight()} px'
+            )
         unten = self.window.add_button.winfo_rooty() + self.window.add_button.winfo_height()
         self.assertLessEqual(unten, self.window.hidden.winfo_rooty())
 
