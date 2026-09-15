@@ -1,0 +1,8 @@
+# Nur selbst gebaute Artefakte. loopMIDI wird NICHT mitgeliefert, sondern zur
+# Laufzeit über winget vom Hersteller installiert (Weitergabe nicht gestattet).
+output/
+build/
+dist/
+*.exe
+*.msi
+*.nupkg
