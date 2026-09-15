@@ -188,7 +188,7 @@ enum LiveAgendaServerResponse {
     var httpResponse: String {
         switch self {
         case .redirect(let url):
-            return "HTTP/1.1 302 Found\r\nLocation: \(url.absoluteString)\r\n\(Self.sicherheitsköpfe)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            return "HTTP/1.1 302 Found\r\nLocation: \(url.absoluteString)\r\n\(Self.sicherheitsKöpfe)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         case .html(let body):
             return Self.antwort("HTTP/1.1 200 OK", inhalt: "Content-Type: text/html; charset=utf-8", body: body)
         case .json(let body):
