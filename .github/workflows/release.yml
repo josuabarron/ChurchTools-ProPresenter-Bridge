@@ -74,7 +74,7 @@ jobs:
         shell: pwsh
         run: |
           $erwartet = (Get-Content VERSION -Raw).Trim()
-          $gefunden = (Get-Item 'windows\installer\output\ChurchToolsBridge-Setup.exe').VersionInfo.ProductVersion
+          $gefunden = (Get-Item 'windows\installer\output\ChurchToolsBridge-Setup.exe').VersionInfo.ProductVersion.Trim()
           Write-Output "VERSION=$erwartet  Installer=$gefunden"
           if ($gefunden -ne $erwartet) { throw "Version im Installer ist $gefunden, erwartet $erwartet" }
 
