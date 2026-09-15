@@ -9,6 +9,31 @@ final class ChurchToolsClient {
     private let decoder: JSONDecoder
     private var agendaCache: [Int: ChurchToolsAgenda] = [:]
 
+    /// Unterbindet das Verfolgen von Umleitungen.
+    ///
+    /// Warum: der Login-Token steht im Authorization-Kopf. URLSession.shared
+    /// reicht ihn an das Umleitungsziel weiter – der Token ginge also an die
+    /// Adresse, die ChurchTools oder ein Proxy in Location nennt. Windows
+    /// unterbindet das ebenfalls (core.py: NoRedirect).
+    private final class KeineUmleitung: NSObject, URLSessionTaskDelegate {
+        static let shared = KeineUmleitung()
+
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            completionHandler(nil)
+        }
+    }
+
+    /// Gemeinsame Sitzung: eine je Prozess, mit dem Umleitungsschutz.
+    private static let session: URLSession = {
+        return URLSession(configuration: .default, delegate: KeineUmleitung.shared, delegateQueue: nil)
+    }()
+
     init(baseURL: URL, token: String, csrfToken: String? = nil) {
         self.baseURL = baseURL
         self.token = token
@@ -170,18 +195,42 @@ final class ChurchToolsClient {
     }
 
     private func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem], responseType: T.Type) async throws -> T {
+        do {
+            return try await performGet(path, queryItems: queryItems, responseType: T.self)
+        } catch BridgeError.http(403, _) {
+            // Der CSRF-Token kann abgelaufen sein. Windows verwirft ihn hier
+            // und holt ihn neu (core.py) – ohne das bliebe der Fehler 403
+            // dauerhaft stehen und die Bridge wäre unbrauchbar, bis sie neu
+            // gestartet wird.
+            sessionCSRFToken = nil
+            return try await performGet(path, queryItems: queryItems, responseType: T.self)
+        }
+    }
+
+    private func performGet<T: Decodable>(_ path: String, queryItems: [URLQueryItem], responseType: T.Type) async throws -> T {
         var components = URLComponents(url: makeURL(path: path), resolvingAgainstBaseURL: false)
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components?.url else { throw BridgeError.invalidURL(path) }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         authorize(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(T.self, from: data)
     }
 
     private func legacyRequest<T: Decodable>(_ parameters: [String: String]) async throws -> T {
+        do {
+            return try await performLegacyRequest(parameters)
+        } catch BridgeError.http(403, _) {
+            // Abgelaufener CSRF-Token ist der häufigste Grund für 403.
+            // Wie unter Windows: verwerfen und einmal neu versuchen.
+            sessionCSRFToken = nil
+            return try await performLegacyRequest(parameters)
+        }
+    }
+
+    private func performLegacyRequest<T: Decodable>(_ parameters: [String: String]) async throws -> T {
         let csrfToken = try await resolveCSRFToken()
         let rootURL = baseURL.lastPathComponent == "api" ? baseURL.deletingLastPathComponent() : baseURL
         guard var components = URLComponents(url: rootURL.appendingPathComponent("index.php"), resolvingAgainstBaseURL: false) else {
@@ -199,7 +248,7 @@ final class ChurchToolsClient {
         request.setValue(csrfToken, forHTTPHeaderField: "CSRF-Token")
         authorize(&request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validate(response: response, data: data)
         let result = try decoder.decode(T.self, from: data)
         if let legacy = result as? any ChurchToolsLegacyStatus, legacy.status != "success" {
@@ -228,7 +277,13 @@ final class ChurchToolsClient {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
-            throw BridgeError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            // Den Antwortkörper NICHT weiterreichen: er landet über den
+            // Fehlertext im Diagnose-Log, das sich in die Zwischenablage
+            // kopieren lässt. Fehlerseiten von ChurchTools oder einem Proxy
+            // können Sitzungsbezüge und interne Pfade enthalten. Windows
+            // schwärzt hier ebenfalls (core.py: 'Response bodies ... do not
+            // expose them').
+            throw BridgeError.http(http.statusCode, "")
         }
     }
 
@@ -411,7 +466,10 @@ enum BridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL(let value): return "Invalid URL: \(value)"
-        case .http(let status, let body): return "ChurchTools HTTP \(status): \(body)"
+        case .http(let status, let body):
+            // Nur noch Status, wenn kein Körper mitgegeben wurde.
+            return body.isEmpty ? "ChurchTools HTTP \(status)"
+                                : "ChurchTools HTTP \(status): \(body.prefix(200))"
         case .legacy(let message): return "ChurchTools Live Agenda: \(message)"
         case .noMatchingEvent: return "Kein passendes ChurchTools-Event mit Agenda gefunden."
         case .invalidAgendaPosition(let position, let maximum):

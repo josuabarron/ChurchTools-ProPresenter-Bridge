@@ -46,7 +46,17 @@ final class AppSettings: ObservableObject {
     }
 
     func save(token: String) throws {
-        guard URL(string: baseURL) != nil else { throw SettingsError.invalidURL }
+        // Dieselbe Prüfung wie unter Windows: nur HTTPS, ohne Zugangsdaten,
+        // Query oder Fragment. Sonst ginge der Login-Token im Klartext raus.
+        guard let parsed = URL(string: baseURL),
+              parsed.scheme == "https",
+              let host = parsed.host,
+              !host.isEmpty,
+              parsed.user == nil,
+              parsed.password == nil,
+              parsed.query == nil,
+              parsed.fragment == nil
+        else { throw SettingsError.invalidURL }
         guard sends.allSatisfy({ (0...127).contains($0.midiNote) }) else {
             throw SettingsError.invalidMIDINote
         }

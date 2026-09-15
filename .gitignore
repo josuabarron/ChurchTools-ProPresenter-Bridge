@@ -1,4 +1,3 @@
 .build/
 .swiftpm/
-bridge-config.json
 .DS_Store

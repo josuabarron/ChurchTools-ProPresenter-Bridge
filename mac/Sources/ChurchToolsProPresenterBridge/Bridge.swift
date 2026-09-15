@@ -375,7 +375,7 @@ final class Bridge {
         </table>
 
         <h2>ProPresenter</h2>
-        <p>Sende MIDI Note On auf Kanal 1 mit Velocity groesser 0 an das virtuelle CoreMIDI-Geraet <code>ChurchTools Bridge</code>. Nach dem ersten Start der Bridge muss ProPresenter eventuell neu gestartet werden, damit der MIDI-Port sichtbar wird.</p>
+        <p>Sende MIDI Note On mit Velocity groesser 0 an das virtuelle CoreMIDI-Geraet <code>ChurchTools Bridge</code>. Jeder Kanal 1-16 wird angenommen; der empfangene Kanal steht im Diagnose-Log. Nach dem ersten Start der Bridge muss ProPresenter eventuell neu gestartet werden, damit der MIDI-Port sichtbar wird.</p>
 
         <h2>Windows: loopMIDI installieren und einrichten</h2>
         <p>Für die MIDI-Verbindung zwischen ProPresenter und der Windows-Bridge muss <strong>loopMIDI separat installiert</strong> werden. Es stellt das virtuelle MIDI-Kabel bereit und ist nicht in der Bridge enthalten. Unter macOS wird loopMIDI nicht benötigt.</p>
@@ -396,7 +396,7 @@ final class Bridge {
         </ul>
 
         <h2>Sends</h2>
-        <p>Ein Send besteht aus Ziel und MIDI-Note. <code>vor</code> oder <code>weiter</code> geht vorwaerts, <code>zurueck</code> geht zurueck, eine Zahl springt zur Position, jeder andere Text sucht einen Agenda-Titel.</p>
+        <p>Ein Send besteht aus Ziel und MIDI-Note. <code>vor</code>, <code>weiter</code>, <code>next</code> oder <code>forward</code> geht vorwaerts, <code>zurück</code>, <code>previous</code> oder <code>back</code> geht zurueck, eine Zahl springt zur Position, jeder andere Text sucht einen Agenda-Titel.</p>
 
         <h2>Agenda-Auswahl</h2>
         <p>Findet die Bridge mehrere passende Agenden am selben Tag, erscheint oben eine Auswahl. Die lokalen URLs zeigen immer das dort gewaehlte Event.</p>

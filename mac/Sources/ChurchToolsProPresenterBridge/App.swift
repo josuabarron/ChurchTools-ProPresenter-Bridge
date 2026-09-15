@@ -166,6 +166,12 @@ private struct BridgeMenuView: View {
                     LabeledField("MIDI-Note") {
                         TextField("60", value: $send.midiNote, format: .number.grouping(.never))
                     }.frame(width: 88)
+                    // Diesen einen Send von Hand auslösen – ohne auf MIDI zu warten.
+                    Button { sendTest(send) } label: { Image(systemName: "play.fill") }
+                        .buttonStyle(.borderless)
+                        .help("Diesen Send auslösen")
+                        .disabled(controller.isSendingCommand)
+                        .padding(.bottom, 5)
                     Button {
                         settings.sends.removeAll { $0.id == send.id }
                     } label: { Image(systemName: "trash") }
@@ -188,13 +194,26 @@ private struct BridgeMenuView: View {
         VStack(alignment: .leading, spacing: 9) {
             Divider()
             Text("Diagnose & Server").font(.subheadline).fontWeight(.semibold)
-            Text("Live-Agenda testen").font(.caption).foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96))], spacing: 8) {
-                ForEach(settings.sends) { send in
-                    Button(send.target.isEmpty ? "Unbenannt" : send.target) { sendTest(send) }
-                        .disabled(controller.isSendingCommand || send.target.isEmpty)
-                }
+            // Abläufe von Hand auslösen – dieselben, die die Windows-Fassung im
+            // versteckten Menü anbietet. Was dort nur für Windows nötig ist
+            // (Ports suchen, MIDI-Port einrichten, Diagnose-Dialog), fehlt hier
+            // bewusst: auf dem Mac legt CoreMIDI den Port selbst an, und die
+            // Diagnose steht ohnehin offen auf diesem Bildschirm.
+            Text("Abläufe von Hand auslösen").font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 8) {
+                Button("Verbindung prüfen") { testConnection() }
+                Button("CT-URL kopieren") { copyServerURL(.churchTools) }
+                Button("Line-URL kopieren") { copyServerURL(.strip) }
+                Button("Notes-URL kopieren") { copyServerURL(.notes) }
+                Button("Notizen anzeigen") { openNotes() }
+                Button("Diagnose-Log kopieren") { copyLog() }
+                    .disabled(controller.logEntries.isEmpty)
+                Button("Log leeren") { controller.clearLog() }
+                    .disabled(controller.logEntries.isEmpty)
+                Button("Hilfe öffnen") { openHelp() }
+                Button("Bridge neu starten") { startBridge() }
             }
+            .disabled(!didLoad)
             LabeledField("Localhost-Port") {
                 TextField("8765", value: $settings.redirectPort, format: .number.grouping(.never))
             }
@@ -203,13 +222,6 @@ private struct BridgeMenuView: View {
                     .font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }.frame(height: 110)
-            HStack {
-                Button(action: copyLog) { Label("Log kopieren", systemImage: "doc.on.doc") }
-                    .disabled(controller.logEntries.isEmpty)
-                Button { controller.clearLog() } label: { Image(systemName: "trash") }
-                    .help("Diagnose-Log leeren").disabled(controller.logEntries.isEmpty)
-                Spacer()
-            }
         }
     }
 
@@ -282,6 +294,12 @@ private struct BridgeMenuView: View {
 
     private func openHelp() {
         if let url = localURL(.help).flatMap(URL.init(string:)) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openNotes() {
+        if let url = localURL(.notes).flatMap(URL.init(string:)) {
             NSWorkspace.shared.open(url)
         }
     }

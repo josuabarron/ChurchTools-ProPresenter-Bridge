@@ -47,6 +47,16 @@ final class LiveAgendaRedirectServer: @unchecked Sendable {
         connection.start(queue: queue)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 8_192) { [weak self] data, _, _, _ in
             guard let self else { return }
+            // Zugriffsschutz: das ist Netzwerkisolation (127.0.0.1), aber keine
+            // Zugriffskontrolle. Ohne diese Prüfungen könnte eine fremde Seite
+            // per DNS-Rebinding die Ansichten lesen.
+            if let grund = Self.abgelehnt(data) {
+                let response = LiveAgendaServerResponse.forbidden(grund).httpResponse
+                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+                return
+            }
             let route = Self.route(from: data)
             Task {
                 let response = await self.handler(route)
@@ -55,6 +65,48 @@ final class LiveAgendaRedirectServer: @unchecked Sendable {
                 })
             }
         }
+    }
+
+    /// Prüft Host, Origin und Sec-Fetch-Site. Gibt den Grund zurück, wenn die
+    /// Anfrage abgelehnt wird.
+    private static func abgelehnt(_ data: Data?) -> String? {
+        guard let data, let request = String(data: data, encoding: .utf8) else { return nil }
+        let header = request.split(separator: "\r\n").dropFirst()
+
+        func wert(_ name: String) -> String? {
+            for zeile in header {
+                guard let doppel = zeile.firstIndex(of: ":") else { continue }
+                let feld = zeile[zeile.startIndex..<doppel].trimmingCharacters(in: .whitespaces)
+                guard feld.caseInsensitiveCompare(name) == .orderedSame else { continue }
+                return String(zeile[zeile.index(after: doppel)...]).trimmingCharacters(in: .whitespaces)
+            }
+            return nil
+        }
+
+        func istLoopback(_ kopf: String) -> Bool {
+            // Port und etwaige Zugangsdaten abschneiden.
+            var name = kopf.split(separator: "@").last.map(String.init) ?? kopf
+            if let punkt = name.lastIndex(of: ":"), name[name.index(after: punkt)...].allSatisfy(\.isNumber) {
+                name = String(name[name.startIndex..<punkt])
+            }
+            name = name.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+            return name == "127.0.0.1" || name == "localhost" || name == "::1"
+        }
+
+        if let host = wert("Host"), !host.isEmpty, !istLoopback(host) {
+            return "unbekannter Host"
+        }
+        if let origin = wert("Origin"), !origin.isEmpty {
+            if origin == "null" { return "fremde Herkunft" }
+            guard let host = URL(string: origin)?.host, istLoopback(host) else {
+                return "fremde Herkunft"
+            }
+        }
+        if let fetchSite = wert("Sec-Fetch-Site"), !fetchSite.isEmpty {
+            let eigene = ["none", "same-origin", "same-site"]
+            if !eigene.contains(fetchSite.lowercased()) { return "seitenübergreifende Anfrage" }
+        }
+        return nil
     }
 
     private static func route(from data: Data?) -> LiveAgendaRoute {
@@ -117,17 +169,34 @@ enum LiveAgendaServerResponse {
     case html(String)
     case json(String)
     case unavailable(String)
+    case forbidden(String)
+
+    /// Gemeinsame Sicherheitsköpfe. Gleicher Stand wie unter Windows
+    /// (windows/server.py): keine fremde Einbettung, keine Referrer-Abgabe,
+    /// kein MIME-Raten.
+    private static let sicherheitsKöpfe = [
+        "Cache-Control: no-store",
+        "Referrer-Policy: no-referrer",
+        "X-Content-Type-Options: nosniff",
+        "X-Frame-Options: DENY",
+    ].joined(separator: "\r\n")
+
+    private static func antwort(_ status: String, inhalt: String, body: String) -> String {
+        "\(status)\r\n\(inhalt)\r\n\(sicherheitsKöpfe)\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+    }
 
     var httpResponse: String {
         switch self {
         case .redirect(let url):
-            return "HTTP/1.1 302 Found\r\nLocation: \(url.absoluteString)\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            return "HTTP/1.1 302 Found\r\nLocation: \(url.absoluteString)\r\n\(Self.sicherheitsköpfe)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         case .html(let body):
-            return "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+            return Self.antwort("HTTP/1.1 200 OK", inhalt: "Content-Type: text/html; charset=utf-8", body: body)
         case .json(let body):
-            return "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+            return Self.antwort("HTTP/1.1 200 OK", inhalt: "Content-Type: application/json; charset=utf-8", body: body)
         case .unavailable(let body):
-            return "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+            return Self.antwort("HTTP/1.1 503 Service Unavailable", inhalt: "Content-Type: text/plain; charset=utf-8", body: body)
+        case .forbidden(let grund):
+            return Self.antwort("HTTP/1.1 403 Forbidden", inhalt: "Content-Type: text/plain; charset=utf-8", body: "Zugriff abgelehnt: \(grund)")
         }
     }
 }
