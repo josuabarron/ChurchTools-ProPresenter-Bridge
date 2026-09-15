@@ -51,18 +51,6 @@ Die CI (`.github/workflows/windows-build.yml`, `release.yml`) und
 | `test_uninstall.py` | 13 | 0,2 s | Deinstallation und Autostart-Pfad |
 | `test_not_elevated.py` | 12 | 0,2 s | Start aus erhöhtem Prozess |
 
-## Was die Tests nicht anfassen
-
-- Kein Test ruft `loopMIDI.exe`, `winget` oder `midi.exe` auf. `subprocess` ist
-  überall ersetzt.
-- Kein Test schreibt in die Registry. `winreg` ist ersetzt.
-- Kein Test fasst die echten Einstellungen an: `LOCALAPPDATA` zeigt auf einen
-  temporären Ordner.
-- Kein Test spricht mit ChurchTools.
-- `test_bridge.py` und `test_server_haertung.py` öffnen einen echten
-  Socket auf `127.0.0.1` mit Port 0 (also vom System vergeben). Das ist
-  gewollt – geprüft wird, was der Server tatsächlich ablehnt.
-
 ## Ein übersprungener Test
 
 `test_verknuepfung_wird_nicht_verfolgt` legt eine symbolische Verknüpfung an
